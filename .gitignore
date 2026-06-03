@@ -1,0 +1,31 @@
+# --- Android / Gradle ---
+android/.gradle/
+android/build/
+android/**/build/
+*.iml
+.idea/
+local.properties
+captures/
+
+# --- Native + models (device-gated, large; bundled per-device via docs/device-runbook.md) ---
+android/app/src/main/jniLibs/
+android/app/src/main/assets/*.dlc
+android/app/src/main/assets/*.tflite
+*.so
+
+# --- Python ---
+__pycache__/
+*.pyc
+ml/runs/
+ml/**/*.npz
+ml/datasets/
+.venv/
+venv/
+
+# --- PDF build temp (the generated PDF itself is committed) ---
+*.tmp.html
+docs/_*.png
+
+# --- OS ---
+.DS_Store
+Thumbs.db

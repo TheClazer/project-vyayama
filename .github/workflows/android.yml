@@ -1,0 +1,22 @@
+name: android-build
+on: [push, pull_request]
+
+# Best-effort assemble + Kotlin unit tests. The CANONICAL build is Android Studio Panda 4 v2025.3.4
+# (the version catalog pins AGP/Kotlin; the Gradle wrapper is generated on first Studio sync).
+# Marked continue-on-error because the device-gated native bits (cpp/, jniLibs) are absent in CI —
+# the mock-mode app + the pure-Kotlin unit tests are what this validates.
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Assemble (mock mode) + unit tests
+        working-directory: android
+        continue-on-error: true
+        run: gradle :app:assembleDebug :app:testDebugUnitTest --no-daemon --stacktrace

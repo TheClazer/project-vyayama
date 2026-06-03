@@ -1,0 +1,18 @@
+name: python-proofs
+on: [push, pull_request]
+
+# Runs the two core-logic proof harnesses (the real gate): the rep-FSM/classifier proof and the
+# Python↔Kotlin feature-parity proof. These RUN in CI and must stay green.
+jobs:
+  proofs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+      - name: Core intelligence proof (angle math · rep FSM · classifier)
+        run: python tools/threshold_tuner/verify_core.py
+      - name: Feature parity proof (Python features == Kotlin features)
+        run: python ml/tests/test_parity.py

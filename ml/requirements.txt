@@ -1,0 +1,7 @@
+numpy>=1.24
+torch>=2.1
+tqdm>=4.66
+onnx>=1.15
+# Optional, for the TFLite export step (pick one path):
+#   ai-edge-torch            # Google's torch→TFLite (recommended)
+#   onnx2tf + tensorflow     # ONNX→TF→TFLite alternative
