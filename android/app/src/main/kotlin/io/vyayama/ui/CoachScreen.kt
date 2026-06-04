@@ -139,4 +139,4 @@ private fun scoreColor(s: Int): Color = when {
     s >= 90 -> Color(0xFF2FD9B6); s >= 75 -> Color(0xFFE0C341); else -> Color(0xFFE0853B)
 }
 
-private fun fmt(v: Float): String = if (v <= 0f) "—" else String.format("%.1f", v)
+private fun fmt(v: Float): String = if (v <= 0f) "—" else String.format(java.util.Locale.US, "%.1f", v)

@@ -1,7 +1,7 @@
 # Version catalog. Versions are conventional/stable; confirm on first Android Studio sync
 # (Gradle versions are "VIBE-with-verify" per bible §19).
 [versions]
-agp = "8.6.0"
+agp = "8.13.2"
 kotlin = "2.0.20"
 coreKtx = "1.13.1"
 lifecycle = "2.8.4"
@@ -22,6 +22,7 @@ androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 camerax-core = { group = "androidx.camera", name = "camera-core", version.ref = "camerax" }
 camerax-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }

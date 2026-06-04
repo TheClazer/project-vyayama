@@ -24,7 +24,7 @@ def main():
     args = ap.parse_args()
 
     model = ExerciseTCN()
-    state = torch.load(args.ckpt, map_location="cpu")
+    state = torch.load(args.ckpt, map_location="cpu", weights_only=False)  # ckpt stores CLASSES list
     model.load_state_dict(state["model"]); model.eval()
 
     dummy = torch.zeros(1, WINDOW, FEATURE_DIM, dtype=torch.float32)

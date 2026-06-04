@@ -38,9 +38,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 
     // Kotlin sources live under src/main/kotlin (not src/main/java).
     sourceSets["main"].kotlin.srcDir("src/main/kotlin")
@@ -49,6 +46,13 @@ android {
     // NOTE (device-only): the native SNPE pipeline (cpp/ + jniLibs/arm64-v8a/*.so) is wired on-device
     // when forking VisionSolution4. The mock-mode build below compiles + runs with NO native libraries —
     // SnpePoseEngine degrades to MockPoseEngine via the DI fallback (App.kt). See bible §7, §10, §22.
+}
+
+// Kotlin 2.0 compilerOptions DSL (replaces the deprecated android.kotlinOptions block).
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 dependencies {
@@ -62,6 +66,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.foundation)
     debugImplementation(libs.androidx.ui.tooling)
 
     implementation(libs.camerax.core)

@@ -59,6 +59,20 @@ def test_low_confidence_not_visible():
     assert vis is False
 
 
+def test_torso_lean_fires_chest_up_cue():
+    # Mirrors MockPoseEngine's "bad form" rep: shoulders shifted forward → large torso lean.
+    # Proves the RealFeatureExtractor math yields TORSO_LEAN > 50 (the squat "Chest up" threshold),
+    # so the coaching cue actually fires in the mock demo.
+    upright = _frame([190, 300], [210, 300])
+    a_up, _, _, _ = normalize_frame(upright)
+    assert a_up[TORSO_LEAN] < 8                                        # good rep → near-vertical torso
+
+    leaning = _frame([190, 300], [210, 300])
+    leaning[L_SHOULDER, 0] += 155; leaning[R_SHOULDER, 0] += 155       # forward lean, like the mock
+    a_lean, _, _, _ = normalize_frame(leaning)
+    assert a_lean[TORSO_LEAN] > 50                                     # bad rep → fires "Chest up"
+
+
 def main():
     ok = True
     for name, fn in sorted(globals().items()):

@@ -49,7 +49,7 @@ class RuleFormAnalyzer : FormAnalyzer {
         val cues = mutableListOf<Cue>()
         if (depth < 0.75f) cues += Cue(9, "knee", "Go deeper — hips below knees")
         if (sym > 22f) cues += Cue(6, "knee", "Even out your weight")
-        if (maxLean > 55f) cues += Cue(5, "torso", "Chest up — keep your back straight")
+        if (maxLean > 50f) cues += Cue(5, "torso", "Chest up — keep your back straight")
         return build(cues, depth = depth, sym = symScore, tempo = tempo,
             weights = floatArrayOf(0.45f, 0.20f, 0.20f, 0.15f),
             scores = floatArrayOf(depth, symScore, upright, tempo))

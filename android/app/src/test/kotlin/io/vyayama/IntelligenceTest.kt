@@ -22,7 +22,7 @@ import kotlin.math.cos
 class IntelligenceTest {
 
     // ---- helpers ----
-    private fun frameWithKnee(angle: Float, tsKp: Boolean = true): PoseFrame {
+    private fun frameWithKnee(angle: Float): PoseFrame {
         // build a 17-kpt frame whose left+right knee angle ≈ `angle`, hips/shoulders gated.
         val kp = FloatArray(Kp.COUNT * 3)
         for (i in 0 until Kp.COUNT) kp[i * 3 + 2] = 1f   // all confident

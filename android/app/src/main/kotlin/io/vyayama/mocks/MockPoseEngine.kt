@@ -35,14 +35,21 @@ class MockPoseEngine(private val periodSec: Float = 1.6f) : PoseEngine {
         val phase = 2.0 * PI * t / periodSec
         val depth = (0.5 - 0.5 * cos(phase)).toFloat()        // 0 (stand) → 1 (deep) → 0
         val theta = 170f - 80f * depth                        // knee angle
-        val kp = squatFigure(theta)
+        // Every 3rd rep, lean the torso forward (bad form) so the "Chest up" coaching cue actually
+        // fires in the mock demo — otherwise the synthetic athlete is flawless and no cue is ever shown.
+        val framesPerRep = (periodSec * 30f).toInt()
+        val badForm = (n / framesPerRep) % 3 == 2
+        val leanPx = if (badForm) 155f * depth else 0f
+        val kp = squatFigure(theta, leanPx)
         val ts = n.toLong() * 33_333_333L                     // synthetic 30 fps clock
         n++
         return PoseFrame(kp, 640, 480, Backend.MOCK, detLatencyMs = 0f, poseLatencyMs = 0f, timestampNs = ts)
     }
 
-    /** Build 17 COCO keypoints for a squat at the given knee angle. Feet narrow (openness low). */
-    private fun squatFigure(kneeAngle: Float): FloatArray {
+    /** Build 17 COCO keypoints for a squat at the given knee angle. Feet narrow (openness low).
+     *  [leanPx] shifts the upper body forward to simulate a torso lean (bad form) without touching
+     *  the legs, so rep counting (knee-driven) is unaffected while TORSO_LEAN rises. */
+    private fun squatFigure(kneeAngle: Float, leanPx: Float = 0f): FloatArray {
         val kp = FloatArray(Kp.COUNT * 3)
         for (i in 0 until Kp.COUNT) kp[i * 3 + 2] = 1f
         fun set(i: Int, x: Float, y: Float) { kp[i * 3] = x; kp[i * 3 + 1] = y }
@@ -61,14 +68,14 @@ class MockPoseEngine(private val periodSec: Float = 1.6f) : PoseEngine {
         set(Kp.L_HIP, hipXL, hipY); set(Kp.R_HIP, hipXR, hipY)
 
         val shY = hipY - 110f
-        set(Kp.L_SHOULDER, hipXL, shY); set(Kp.R_SHOULDER, hipXR, shY)
-        val midX = (hipXL + hipXR) / 2f
+        set(Kp.L_SHOULDER, hipXL + leanPx, shY); set(Kp.R_SHOULDER, hipXR + leanPx, shY)
+        val midX = (hipXL + hipXR) / 2f + leanPx
         set(Kp.NOSE, midX, shY - 45f)
         set(Kp.L_EYE, midX - 8f, shY - 50f); set(Kp.R_EYE, midX + 8f, shY - 50f)
         set(Kp.L_EAR, midX - 15f, shY - 45f); set(Kp.R_EAR, midX + 15f, shY - 45f)
-        // arms hanging in front (wrists below shoulders → openness stays low → not a jumping jack)
-        set(Kp.L_ELBOW, hipXL, shY + 55f); set(Kp.R_ELBOW, hipXR, shY + 55f)
-        set(Kp.L_WRIST, hipXL, shY + 105f); set(Kp.R_WRIST, hipXR, shY + 105f)
+        // arms track the torso (wrists below shoulders → openness stays low → not a jumping jack)
+        set(Kp.L_ELBOW, hipXL + leanPx, shY + 55f); set(Kp.R_ELBOW, hipXR + leanPx, shY + 55f)
+        set(Kp.L_WRIST, hipXL + leanPx, shY + 105f); set(Kp.R_WRIST, hipXR + leanPx, shY + 105f)
         return kp
     }
 }
