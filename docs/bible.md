@@ -4,15 +4,31 @@
 > On-device, real-time **AI Form Coach** for Snapdragon. Skeletons in → coaching out.
 >
 > Hack4SoC 3.0 · **Qualcomm Edge AI Track** · Problem Statement: **FitSense — Real-Time Exercise
-> Detection & Recognition** · Target hardware: Qualcomm **QIDK / RB3 Gen 2 / QCS6490**.
+> Detection & Recognition** · Target hardware (organizer-confirmed): **Qualcomm QIDK · Snapdragon 8
+> Elite (SM8750, Hexagon V79) · Android**. *(The PS image's "RB3 Gen 2 / QCS6490" was an erratum.)*
 >
-> **Version 1.0** (first draft). This document is the single source of truth. If anything you
-> remember contradicts the bible, **the bible wins**. If a decision changes, update the bible in the
-> same commit.
+> **Version 1.1.** Single source of truth — if anything you remember contradicts the bible, **the
+> bible wins**. If a decision changes, update the bible in the same commit.
+>
+> **v1.1 — DEVICE CONFIRMED:** organizers confirmed the venue device is a **QIDK with Snapdragon 8
+> Elite**, running **Android** (ADB via Android Studio platform-tools) — *not* the QCS6490/RB3 board the
+> PS image showed. This **resolves landmines L1/L2/L4/L5** (§22): one known flagship target (Hexagon
+> **V79**, the top-tier NPU), the reference **VisionSolution4 is validated on 8 Elite** (so its `.dlc` +
+> skel `.so` are the right ones), the `<80 ms` budget becomes trivial, and a developer-kit Android build
+> should permit `adb root`/`setenforce 0`. The board / V68 / USB-cam-HDMI contingencies below are now
+> **dead-path insurance only**.
 
 ---
 
 ## 0. Front matter
+
+> **v1.1 — DEVICE CONFIRMED (organizer erratum on the PS):** the venue device is a **QIDK with
+> Snapdragon 8 Elite (SM8750, Hexagon V79), running Android** — *not* the QCS6490/RB3 board the PS image
+> showed. This **resolves landmines L1/L2/L4/L5** (§22): one known flagship target (top-tier NPU), the
+> reference **VisionSolution4 is validated on 8 Elite** (its `.dlc` + skel `.so` are the right ones), the
+> `<80 ms` budget is trivial, and the developer-kit Android build should permit `adb root`/`setenforce 0`.
+> ADB ships with Android Studio platform-tools. The board / V68 / USB-cam-HDMI notes below are now
+> dead-path insurance only.
 
 ### 0.1 How to use this document — the three governing rules
 1. **Default to the bible.** When in doubt, what this document says wins. It is grounded in the
@@ -675,11 +691,11 @@ The real ones. Each: **what · when it bites · find it EARLY · defuse.**
 
 | # | Landmine | When it bites | Find early | Defuse |
 |---|---|---|---|---|
-| **L1** | Venue device unknown: QIDK 8-Elite (V79 phone) vs QCS6490/RB3 (V68 board) | integration/demo | **confirm at June 5 workshop** | device-agnostic; plan BOTH (phone=reference as-is; board=V68 skels + USB-cam/HDMI UI); frontend-last commits UI after we know |
-| **L2** | HTP needs `adb root` + `setenforce 0` (userdebug only) | when proving NPU | confirm venue device is rooted at workshop | honest DSP→GPU→CPU; venue must provide a capable device; retail fallback framed as a strength |
+| ~~**L1**~~ | **RESOLVED — device confirmed: QIDK / Snapdragon 8 Elite (V79) / Android** (organizer erratum on PS) | — | confirmed | Target the 8-Elite/V79 build: the reference `VisionSolution4` **is validated on 8 Elite** → its `.dlc` + skel `.so` are the right ones. Device-agnostic ladder retained as insurance. |
+| **L2** | HTP needs `adb root` + `setenforce 0` (userdebug only) | when proving NPU | confirm at workshop | **QIDK is a developer kit → almost certainly userdebug/rootable** (unlike a locked retail phone); honest DSP→GPU→CPU fallback if not |
 | **L3** | DLC gen needs Ubuntu 22.04 + Docker (18 GB); you're on Windows | model generation | Day-1 env setup | WSL2 Ubuntu; **OR AI Hub Path B (no Docker/Linux/COCO)** |
-| **L4** | V79 DLC/`.so` won't accelerate on V68 (silent CPU fallback) | NPU validation | once device known | regenerate DLC + matching skel `.so`; or Path B per-device DLC; **`backend()` reports truth** |
-| **L5** | <80 ms on weaker V68 with TWO models | latency claim | first on-device profile | detect-every-N; single-stage pose (MediaPipe-Pose, one inference); measured-only |
+| **L4** | Wrong-arch DLC/`.so` silently falls back to CPU | NPU validation | first on-device run | **target V79** (8 Elite): use the reference's 8-Elite `.dlc` + skels, or an AI Hub 8-Elite DLC; **`backend()` reports truth** |
+| **L5** | <80 ms/frame latency budget | latency claim | first on-device profile | **trivial on V79** (8 Elite = top-tier NPU; HRNet pose ≈ low-single-digit ms); detect-every-N + single-stage pose are spare headroom; measured-only |
 | **L6** | INT8 quant needs COCO calibration (GBs) | DLC gen | Day-1 (Docker route) | COCO val2017 subset (~1 GB); or Path B (already quantized) |
 | **L7** | Fork build finicky (AS Panda 4 2025.3.4, OpenCV 4.13.0, NDK r26c, aar path) | bring-up | Phase 1 | **get UNMODIFIED reference running before any of our code**; if it fights >1 day, pivot to Path B + thin SNPE runner behind same `PoseEngine` |
 | **L8** | Device-free dev needs recorded keypoint fixtures that don't exist | Phase 1 (B blocked) | it's a Phase-0 task | record Core-5 sessions Day 1 (reference dump / MediaPipe on laptop) → CSV |
@@ -690,8 +706,8 @@ The real ones. Each: **what · when it bites · find it EARLY · defuse.**
 **Rules-first** neutralizes L9. (c) **Mock-everything + frozen interfaces** neutralizes L10 and keeps the
 app demoable on partial completion. (d) **Honest `backend()` + measured-only numbers** neutralizes the
 "NPU claim collapses under questioning" risk. (e) **Prove the NPU path on ≥2 different Hexagon versions in
-prep** (a rooted personal Snapdragon + the workshop QIDK) → high confidence on an unseen third device, and
-record an NPU-mode backup video on the closest device class.
+prep** (a rooted personal Snapdragon + the workshop QIDK 8-Elite/V79) → high confidence, plus an
+NPU-mode backup video recorded on the closest device class (8 Gen 2/3 ≈ V73/V75).
 
 ---
 

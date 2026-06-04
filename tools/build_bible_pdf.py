@@ -96,8 +96,8 @@ COVER = """
   <div class="doctype">PROJECT BIBLE</div>
   <div class="meta">
     <b>Problem statement</b> &nbsp; FitSense — Real-Time Exercise Detection &amp; Recognition<br>
-    <b>Target hardware</b> &nbsp; Qualcomm QIDK · RB3 Gen 2 · QCS6490<br>
-    <b>Version</b> &nbsp; 1.0 &nbsp;·&nbsp; <b>Self-audit</b> &nbsp; 94.2 / 100 over 3 iterations
+    <b>Target hardware</b> &nbsp; Qualcomm QIDK · Snapdragon 8 Elite (Hexagon V79) · Android<br>
+    <b>Version</b> &nbsp; 1.1 &nbsp;·&nbsp; <b>Self-audit</b> &nbsp; 94.2 / 100 over 3 iterations
   </div>
 </section>
 """
