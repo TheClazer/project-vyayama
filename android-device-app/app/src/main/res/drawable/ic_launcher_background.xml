@@ -6,16 +6,16 @@
     android:viewportWidth="108"
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt">
+    <!-- Premium near-black field with a faint volt-green glow (top-centre). -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="0" android:startY="0"
-                android:endX="108" android:endY="108"
-                android:type="linear">
-                <item android:color="#FF12A085" android:offset="0.0" />
-                <item android:color="#FF0E8C73" android:offset="0.55" />
-                <item android:color="#FF0B5F50" android:offset="1.0" />
-            </gradient>
+                android:type="radial"
+                android:centerX="58" android:centerY="40"
+                android:gradientRadius="88"
+                android:startColor="#FF15271B"
+                android:centerColor="#FF0C1218"
+                android:endColor="#FF080B0F" />
         </aapt:attr>
     </path>
 </vector>

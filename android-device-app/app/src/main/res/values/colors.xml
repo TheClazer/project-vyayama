@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#008577</color>
-    <color name="colorPrimaryDark">#00574B</color>
-    <color name="colorAccent">#D81B60</color>
+    <!-- ===== Vyāyāma · "Volt" palette ===== -->
+    <!-- Neutrals -->
+    <color name="ink">#0A0E12</color>          <!-- app background / status bar -->
+    <color name="surface">#121821</color>      <!-- action bar / HUD panels -->
+    <color name="surface2">#1B2330</color>     <!-- raised chips -->
+    <color name="textPrimary">#F2F6FA</color>
+    <color name="textMuted">#8A97A6</color>
+    <!-- Accents (the two brand tones) -->
+    <color name="volt">#C8FF3C</color>         <!-- electric lime — primary / energy / success -->
+    <color name="voltDim">#9FD42A</color>
+    <color name="coral">#FF6A5A</color>        <!-- form-correction / attention -->
+
+    <!-- AppCompat hooks (repointed to the Volt system) -->
+    <color name="colorPrimary">#121821</color>
+    <color name="colorPrimaryDark">#0A0E12</color>
+    <color name="colorAccent">#C8FF3C</color>
 </resources>

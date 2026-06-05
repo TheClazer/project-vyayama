@@ -3,14 +3,26 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Vyāyāma — a dynamic athlete mid-stride. Bold white on teal (echoes the live skeleton). -->
+    <!-- Vyāyāma — an athlete driving forward mid-stride. Volt-lime on near-black,
+         echoing the live skeleton the app draws. Two speed streaks add motion. -->
+
+    <!-- motion / speed streaks (behind the figure) -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M56,30 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+        android:strokeColor="#9FD42A"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M24,50 L37,50 M21,63 L35,63" />
+
+    <!-- head -->
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="9"
+        android:fillColor="#C8FF3C"
+        android:pathData="M61,32 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+
+    <!-- torso + limbs (one bold continuous mark) -->
+    <path
+        android:strokeColor="#C8FF3C"
+        android:strokeWidth="11"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M56,40 L52,60 M54,46 L70,38 M54,46 L40,54 M52,60 L64,78 L63,84 M52,60 L40,80" />
+        android:pathData="M61,40 L52,64 M57,47 L74,40 M57,47 L43,55 M52,64 L64,74 L61,87 M52,64 L40,79" />
 </vector>

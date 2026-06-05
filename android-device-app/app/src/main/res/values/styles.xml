@@ -1,15 +1,32 @@
 <resources>
 
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-        <!-- Customize your theme here. -->
-        <item name="colorPrimary">@color/colorPrimary</item>
-        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="colorAccent">@color/colorAccent</item>
+    <!-- Vyāyāma · Volt — premium dark theme with an electric-lime accent. -->
+    <style name="AppTheme" parent="Theme.AppCompat">
+        <item name="colorPrimary">@color/surface</item>
+        <item name="colorPrimaryDark">@color/ink</item>
+        <item name="colorAccent">@color/volt</item>
+        <item name="android:windowBackground">@color/ink</item>
+        <item name="android:statusBarColor">@color/ink</item>
+        <item name="actionBarStyle">@style/Volt.ActionBar</item>
+        <item name="actionBarPopupTheme">@style/AppTheme.PopupOverlay</item>
+    </style>
+
+    <style name="Volt.ActionBar" parent="Widget.AppCompat.ActionBar.Solid">
+        <item name="background">@color/surface</item>
+        <item name="titleTextStyle">@style/Volt.Title</item>
+        <item name="subtitleTextStyle">@style/Volt.Subtitle</item>
+    </style>
+
+    <style name="Volt.Title" parent="TextAppearance.AppCompat.Widget.ActionBar.Title">
+        <item name="android:textColor">@color/volt</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Volt.Subtitle" parent="TextAppearance.AppCompat.Widget.ActionBar.Subtitle">
+        <item name="android:textColor">@color/textMuted</item>
     </style>
 
     <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
-
-    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
+    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Dark" />
 
 </resources>

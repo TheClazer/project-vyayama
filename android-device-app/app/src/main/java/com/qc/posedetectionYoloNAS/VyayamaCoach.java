@@ -33,6 +33,10 @@ public class VyayamaCoach {
     private int activeStreak = 0, idleStreak = 0;
     private String reported = "NONE", candidate = "NONE";
     private int candStreak = 0;
+    // Sticky-lock tuning: ACQUIRE = frames to first-lock from NONE (snappy);
+    // SWITCH = frames a DIFFERENT candidate must dominate to OVERRIDE a (possibly wrong) lock.
+    private static final int ACQUIRE = 7;    // ~0.3s
+    private static final int SWITCH  = 16;   // ~0.6–0.8s
 
     // rep FSM (mirrors StateMachineRepCounter)
     private String repExercise = "NONE";
@@ -101,9 +105,21 @@ public class VyayamaCoach {
 
         if (cand.equals(candidate)) candStreak++;
         else { candidate = cand; candStreak = 1; }
-        // LOCK: choose the exercise ONCE per set (only while it's still NONE), then hold it until the
-        // person goes idle (reset above). This is what stops the squat<->curl flicker and rep loss mid-set.
-        if (reported.equals("NONE") && candStreak >= 8 && !cand.equals("UNKNOWN")) reported = cand;
+        // Sticky-but-self-correcting lock — fixes BOTH failure modes:
+        //  • Flicker / lost reps: a brief (1–few frame) blip can NEVER move the lock, so reps survive.
+        //  • Wrong first guess: the first half-rep often reads wrong (e.g. arms move at the top of a
+        //    squat → "BICEP_CURL"). We no longer freeze that mistake. While no rep has been banked yet
+        //    (reps == 0) a DIFFERENT candidate that stays consistent for the longer SWITCH window
+        //    overrides the lock — so it self-corrects within ~0.7s without the user going idle.
+        //    Once reps are actually counted the lock is trusted (only an idle gap re-opens it),
+        //    which keeps a real set's count rock-stable.
+        if (!cand.equals("UNKNOWN")) {
+            if (reported.equals("NONE")) {
+                if (candStreak >= ACQUIRE) reported = cand;
+            } else if (reps == 0 && !cand.equals(reported) && candStreak >= SWITCH) {
+                reported = cand;
+            }
+        }
     }
 
     // ---------------- rep FSM ----------------

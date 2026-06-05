@@ -40,8 +40,8 @@ public class FragmentRender extends View {
     private volatile boolean mExercising = false;
     private int mFps = 0;
 
-    private static final int ACCENT = Color.rgb(0x2F, 0xD9, 0xB6);   // teal
-    private static final int AMBER  = Color.rgb(0xE0, 0x85, 0x3B);
+    private static final int ACCENT = Color.rgb(0xC8, 0xFF, 0x3C);   // volt (brand primary)
+    private static final int AMBER  = Color.rgb(0xFF, 0x6A, 0x5A);   // coral (form-correction)
 
     private final Paint mFramePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint mPosePrimary = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -54,6 +54,10 @@ public class FragmentRender extends View {
     private final Paint mCueText = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mCueBg = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mPanel = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mStripe = new Paint(Paint.ANTI_ALIAS_FLAG);     // volt left accent bar
+    private final Paint mPill = new Paint(Paint.ANTI_ALIAS_FLAG);       // engine badge bg
+    private final Paint mBadgeText = new Paint(Paint.ANTI_ALIAS_FLAG);  // engine badge text
+    private final Paint mFormP = new Paint(Paint.ANTI_ALIAS_FLAG);      // form score
 
     int[][] Connections = {{1,3},{1,0},{2,4},{2,0},{0,5},{0,6},{5,7},{7,9},{6,8},{8,10},{5,11},{6,12},{11,12},{11,13},{13,15},{12,14},{14,16}};
 
@@ -66,16 +70,20 @@ public class FragmentRender extends View {
         setClickable(true);
         Typeface black = Typeface.create("sans-serif-black", Typeface.NORMAL);
         Typeface med   = Typeface.create("sans-serif-medium", Typeface.NORMAL);
-        mPosePrimary.setColor(ACCENT); mPosePrimary.setStrokeWidth(10); mPosePrimary.setStrokeCap(Paint.Cap.ROUND);
-        mPoseOther.setColor(Color.argb(120, 150, 160, 170)); mPoseOther.setStrokeWidth(5); mPoseOther.setStrokeCap(Paint.Cap.ROUND);
+        mPosePrimary.setColor(ACCENT); mPosePrimary.setStrokeWidth(11); mPosePrimary.setStrokeCap(Paint.Cap.ROUND); mPosePrimary.setStrokeJoin(Paint.Join.ROUND);
+        mPoseOther.setColor(Color.argb(110, 138, 151, 166)); mPoseOther.setStrokeWidth(5); mPoseOther.setStrokeCap(Paint.Cap.ROUND);
         mJoint.setColor(Color.WHITE); mJoint.setStyle(Paint.Style.FILL);
-        mTitle.setColor(ACCENT); mTitle.setTextSize(34); mTitle.setTypeface(black); mTitle.setLetterSpacing(0.06f);
-        mExerciseP.setColor(Color.WHITE); mExerciseP.setTextSize(78); mExerciseP.setTypeface(black); mExerciseP.setShadowLayer(8, 0, 3, 0xAA000000);
-        mRepP.setColor(ACCENT); mRepP.setTextSize(98); mRepP.setTypeface(black); mRepP.setShadowLayer(8, 0, 3, 0xAA000000);
-        mSmall.setColor(0xFFB8C0CC); mSmall.setTextSize(26); mSmall.setTypeface(med);
-        mCueText.setColor(0xFF0E1014); mCueText.setTextSize(38); mCueText.setTypeface(black);
+        mTitle.setColor(ACCENT); mTitle.setTextSize(26); mTitle.setTypeface(black); mTitle.setLetterSpacing(0.22f);
+        mExerciseP.setColor(0xFFF2F6FA); mExerciseP.setTextSize(74); mExerciseP.setTypeface(black); mExerciseP.setLetterSpacing(-0.01f); mExerciseP.setShadowLayer(10, 0, 3, 0x99000000);
+        mRepP.setColor(ACCENT); mRepP.setTextSize(96); mRepP.setTypeface(black); mRepP.setShadowLayer(12, 0, 3, 0x66000000);
+        mSmall.setColor(0xFF8A97A6); mSmall.setTextSize(24); mSmall.setTypeface(med); mSmall.setLetterSpacing(0.08f);
+        mFormP.setColor(0xFF8A97A6); mFormP.setTextSize(24); mFormP.setTypeface(med); mFormP.setLetterSpacing(0.08f);
+        mCueText.setColor(0xFF0A0E12); mCueText.setTextSize(36); mCueText.setTypeface(black); mCueText.setLetterSpacing(0.02f);
         mCueBg.setColor(AMBER); mCueBg.setStyle(Paint.Style.FILL);
-        mPanel.setColor(0xDD0E1014); mPanel.setStyle(Paint.Style.FILL);
+        mPanel.setColor(0xE6121821); mPanel.setStyle(Paint.Style.FILL);
+        mStripe.setColor(ACCENT); mStripe.setStyle(Paint.Style.FILL);
+        mPill.setColor(0x33C8FF3C); mPill.setStyle(Paint.Style.FILL);
+        mBadgeText.setColor(ACCENT); mBadgeText.setTextSize(22); mBadgeText.setTypeface(black); mBadgeText.setLetterSpacing(0.06f);
     }
 
     public void setFrame(Bitmap b) { mFrame = b; }
@@ -155,28 +163,46 @@ public class FragmentRender extends View {
             // ---- coaching HUD ----
             String engine = MainActivity.runtime_var == 'D' ? "NPU"
                     : MainActivity.runtime_var == 'G' ? "GPU" : "CPU";
-            String ex = mExercising ? mExercise : "READY";
+            boolean live = mExercising && !"READY".equals(mExercise) && !"…".equals(mExercise);
+            String ex = live ? mExercise : "READY";
             String repStr = Integer.toString(mReps);
 
-            float L = 28, panelTop = 24, panelH = 252;
+            float pad = 26f, panelL = 16, panelTop = 22, panelH = 250;
             float exW = mExerciseP.measureText(ex);
-            float panelW = Math.max(exW + 48, 380);
-            canvas.drawRoundRect(new RectF(16, panelTop, 16 + panelW, panelTop + panelH), 22, 22, mPanel);
+            float panelW = Math.max(exW + 2 * pad + 8, 396);
+            RectF panel = new RectF(panelL, panelTop, panelL + panelW, panelTop + panelH);
+            canvas.drawRoundRect(panel, 26, 26, mPanel);
+            // volt accent stripe down the left edge
+            canvas.drawRoundRect(new RectF(panelL, panelTop + 16, panelL + 6, panel.bottom - 16), 3, 3, mStripe);
 
-            canvas.drawText("VYĀYĀMA", L, panelTop + 44, mTitle);
-            canvas.drawText(engine + "  ·  " + mFps + " FPS  ·  tap to rotate", L, panelTop + 78, mSmall);
-            canvas.drawText(ex, L, panelTop + 156, mExerciseP);
-            canvas.drawText(repStr, L, panelTop + 240, mRepP);
-            float rx = L + mRepP.measureText(repStr) + 16;
-            canvas.drawText("REPS", rx, panelTop + 240, mSmall);
-            if (mExercising && mFormScore >= 0) canvas.drawText("form " + mFormScore, rx, panelTop + 208, mSmall);
+            float x = panelL + pad;
+            canvas.drawText("VYĀYĀMA", x, panelTop + 42, mTitle);
 
-            if (mExercising && mCue != null && !mCue.isEmpty()) {
-                float pad = 22, cueTop = panelTop + panelH + 14, h = 58;
+            // engine + fps badge, right-aligned in the panel header
+            String badge = engine + " · " + mFps + " FPS";
+            float bw = mBadgeText.measureText(badge) + 28;
+            RectF pill = new RectF(panel.right - pad - bw, panelTop + 22, panel.right - pad, panelTop + 52);
+            canvas.drawRoundRect(pill, 15, 15, mPill);
+            canvas.drawText(badge, pill.left + 14, pill.bottom - 9, mBadgeText);
+
+            // exercise name
+            canvas.drawText(ex, x, panelTop + 134, mExerciseP);
+
+            // big rep counter + label + form score
+            canvas.drawText(repStr, x, panelTop + 226, mRepP);
+            float rx = x + mRepP.measureText(repStr) + 18;
+            canvas.drawText("REPS", rx, panelTop + 226, mSmall);
+            if (live && mFormScore >= 0) canvas.drawText("FORM " + mFormScore, rx, panelTop + 194, mFormP);
+
+            // coaching cue chip — volt for a clean rep, coral for a correction
+            if (live && mCue != null && !mCue.isEmpty()) {
+                boolean good = "Good rep!".equals(mCue) || "Full range".equals(mCue);
+                mCueBg.setColor(good ? ACCENT : AMBER);
+                mCueText.setColor(good ? 0xFF0A0E12 : 0xFFFFFFFF);
+                float cueTop = panel.bottom + 14, h = 60;
                 float tw = mCueText.measureText(mCue);
-                mCueBg.setColor("Good rep!".equals(mCue) ? ACCENT : AMBER);
-                canvas.drawRoundRect(new RectF(16, cueTop, 16 + tw + 2 * pad, cueTop + h), 16, 16, mCueBg);
-                canvas.drawText(mCue, 16 + pad, cueTop + 40, mCueText);
+                canvas.drawRoundRect(new RectF(panelL, cueTop, panelL + tw + 2 * pad, cueTop + h), 18, 18, mCueBg);
+                canvas.drawText(mCue, panelL + pad, cueTop + 40, mCueText);
             }
         } finally {
             mLock.unlock();
