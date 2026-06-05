@@ -85,7 +85,8 @@ public class VyayamaCoach {
         if (activity > 25f) { activeStreak++; idleStreak = 0; }
         else { idleStreak++; activeStreak = 0; }
         if (!exercising && activeStreak >= 8) exercising = true;
-        if (exercising && idleStreak >= 14) { exercising = false; reported = "NONE"; }
+        // Only release the lock after a clear idle gap (~0.7s) — not a brief pause between reps.
+        if (exercising && idleStreak >= 20) { exercising = false; reported = "NONE"; candidate = "NONE"; candStreak = 0; }
         if (!exercising) { reported = "NONE"; return; }
 
         float avgTorso = mean(3);
@@ -100,15 +101,18 @@ public class VyayamaCoach {
 
         if (cand.equals(candidate)) candStreak++;
         else { candidate = cand; candStreak = 1; }
-        if (candStreak >= 8 && !cand.equals("UNKNOWN")) reported = cand;
-        if (reported.equals("NONE")) reported = "NONE";
+        // LOCK: choose the exercise ONCE per set (only while it's still NONE), then hold it until the
+        // person goes idle (reset above). This is what stops the squat<->curl flicker and rep loss mid-set.
+        if (reported.equals("NONE") && candStreak >= 8 && !cand.equals("UNKNOWN")) reported = cand;
     }
 
     // ---------------- rep FSM ----------------
     private void updateReps(long tsNs, float[] s) {
         String ex = reported;
-        if (!ex.equals(repExercise)) { repExercise = ex; phase = "TOP"; reps = 0; maxP = 0; repFrames.clear(); prevPhase = "TOP"; }
+        // Paused (idle/unknown): freeze the FSM but KEEP the reps — don't zero them on a brief gap.
         if (ex.equals("NONE") || ex.equals("UNKNOWN")) return;
+        // Only reset when genuinely switching to a DIFFERENT exercise (after an idle re-lock).
+        if (!ex.equals(repExercise)) { repExercise = ex; phase = "TOP"; reps = 0; maxP = 0; repFrames.clear(); prevPhase = "TOP"; }
 
         float top, bottom, v;
         switch (ex) {

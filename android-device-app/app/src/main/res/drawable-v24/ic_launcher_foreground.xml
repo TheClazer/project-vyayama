@@ -3,14 +3,14 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Vyāyāma: a mid-rep exercise figure (on-brand with the live skeleton). White on teal. -->
+    <!-- Vyāyāma — a dynamic athlete mid-stride. Bold white on teal (echoes the live skeleton). -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,30 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+        android:pathData="M56,30 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
     <path
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="6"
+        android:strokeWidth="9"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M54,40 L54,64 M54,47 L38,34 M54,47 L70,34 M54,64 L44,82 M54,64 L64,82" />
+        android:pathData="M56,40 L52,60 M54,46 L70,38 M54,46 L40,54 M52,60 L64,78 L63,84 M52,60 L40,80" />
 </vector>

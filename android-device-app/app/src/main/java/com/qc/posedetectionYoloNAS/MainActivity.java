@@ -1,105 +1,38 @@
 //============================================================================
-/*
- Copyright (C) 2017 The Android Open Source Project
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
-*/
+// Vyāyāma — host activity. Boots straight to the camera on the NPU (DSP).
+// Engine (NPU / GPU / CPU) is switchable from the top-right 3-dot menu.
 //============================================================================
-
 package com.qc.posedetectionYoloNAS;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
-import androidx.fragment.app.FragmentTransaction;
 import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.WindowManager;
-import android.widget.RadioGroup;
 
 import org.opencv.android.OpenCVLoader;
 
-/**
- * MainActivity class helps choose runtime from UI through main_activity.xml
- * Passes choice of runtime to CameraFragment for making inference using selected runtime.
- */
 public class MainActivity extends AppCompatActivity {
 
-    static {
-       System.loadLibrary("posedetectionYoloNAS");
-    }
+    static { System.loadLibrary("posedetectionYoloNAS"); }
 
-    public static char runtime_var = 'D';  // default to DSP = Hexagon NPU (matches main_activity.xml checked)
-    RadioGroup rg;
+    public static char runtime_var = 'D';   // default = DSP = Hexagon NPU
+
+    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main_activity);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setTitle("Vyāyāma");
+            getSupportActionBar().setSubtitle("AI Form Coach · " + engineName(runtime_var));
+        }
         OpenCVLoader.initDebug();
-        rg = (RadioGroup) findViewById(R.id.rg1);
-        rg.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(RadioGroup group, int checkedId) {
-                if (checkedId == R.id.CPU) {
-                        runtime_var = 'C';
-                        overToCamera(runtime_var);
-                        System.out.println("CPU instance running");
-                    } else if (checkedId == R.id.GPU) {
-                        runtime_var = 'G';
-                        overToCamera(runtime_var);
-                        System.out.println("GPU instance running");
-                    } else if (checkedId == R.id.DSP) {
-                        runtime_var = 'D';
-                        overToCamera(runtime_var);
-                        System.out.println("DSP instance running");
-                    } else {
-                        runtime_var = 'N';
-                        overToCamera(runtime_var);
-                        System.out.println("Do Nothing");
-                    }
-            }
-        });
-
-    }
-
-    /**
-     * Method to request Camera permission
-     */
-    private void cameraPermission() {
-        requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
-    }
-
-    /**
-     * Method to navigate to CameraFragment along with runtime choice
-     */
-    private void overToCamera(char runtime_value) {
-        Boolean passToFragment;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            passToFragment = MainActivity.this.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
-        }
-        else{
-            passToFragment = true;
-        }
-        if (passToFragment) {
-            FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
-            Bundle args = new Bundle();
-            args.putChar("key", runtime_value);
-            transaction.add(R.id.main_content, CameraFragment.create(args));
-            transaction.commit();
-        } else {
-            cameraPermission();
-        }
     }
 
     @Override
@@ -109,7 +42,53 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onStop() {
-        super.onStop();
+    public boolean onCreateOptionsMenu(Menu menu) {
+        Menu sub = menu.addSubMenu("Engine");
+        sub.add(0, M_NPU, 0, "NPU  (Hexagon)");
+        sub.add(0, M_GPU, 0, "GPU  (Adreno)");
+        sub.add(0, M_CPU, 0, "CPU");
+        sub.getItem().setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);  // lives in the 3-dot overflow
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        char r;
+        switch (item.getItemId()) {
+            case M_NPU: r = 'D'; break;
+            case M_GPU: r = 'G'; break;
+            case M_CPU: r = 'C'; break;
+            default: return super.onOptionsItemSelected(item);
+        }
+        if (r != runtime_var) {
+            runtime_var = r;
+            if (getSupportActionBar() != null) getSupportActionBar().setSubtitle("AI Form Coach · " + engineName(r));
+            overToCamera(r);
+        }
+        return true;
+    }
+
+    private static String engineName(char r) {
+        return r == 'D' ? "NPU" : r == 'G' ? "GPU" : "CPU";
+    }
+
+    private void overToCamera(char runtime_value) {
+        boolean granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+        if (granted) {
+            Bundle args = new Bundle();
+            args.putChar("key", runtime_value);
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.main_content, CameraFragment.create(args))
+                    .commitAllowingStateLoss();
+        } else {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, 1);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        overToCamera(runtime_var);
     }
 }

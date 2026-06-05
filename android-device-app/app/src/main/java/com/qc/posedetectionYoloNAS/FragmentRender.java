@@ -53,6 +53,7 @@ public class FragmentRender extends View {
     private final Paint mSmall = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mCueText = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mCueBg = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mPanel = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     int[][] Connections = {{1,3},{1,0},{2,4},{2,0},{0,5},{0,6},{5,7},{7,9},{6,8},{8,10},{5,11},{6,12},{11,12},{11,13},{13,15},{12,14},{14,16}};
 
@@ -63,15 +64,18 @@ public class FragmentRender extends View {
 
     private void init() {
         setClickable(true);
-        mPosePrimary.setColor(ACCENT); mPosePrimary.setStrokeWidth(9);
-        mPoseOther.setColor(Color.argb(140, 160, 160, 160)); mPoseOther.setStrokeWidth(5);
+        Typeface black = Typeface.create("sans-serif-black", Typeface.NORMAL);
+        Typeface med   = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+        mPosePrimary.setColor(ACCENT); mPosePrimary.setStrokeWidth(10); mPosePrimary.setStrokeCap(Paint.Cap.ROUND);
+        mPoseOther.setColor(Color.argb(120, 150, 160, 170)); mPoseOther.setStrokeWidth(5); mPoseOther.setStrokeCap(Paint.Cap.ROUND);
         mJoint.setColor(Color.WHITE); mJoint.setStyle(Paint.Style.FILL);
-        mTitle.setColor(ACCENT); mTitle.setTextSize(42); mTitle.setTypeface(Typeface.DEFAULT_BOLD);
-        mExerciseP.setColor(Color.WHITE); mExerciseP.setTextSize(86); mExerciseP.setTypeface(Typeface.DEFAULT_BOLD);
-        mRepP.setColor(ACCENT); mRepP.setTextSize(64); mRepP.setTypeface(Typeface.DEFAULT_BOLD);
-        mSmall.setColor(Color.WHITE); mSmall.setTextSize(30);
-        mCueText.setColor(Color.rgb(0x1A, 0x12, 0x08)); mCueText.setTextSize(40); mCueText.setTypeface(Typeface.DEFAULT_BOLD);
+        mTitle.setColor(ACCENT); mTitle.setTextSize(34); mTitle.setTypeface(black); mTitle.setLetterSpacing(0.06f);
+        mExerciseP.setColor(Color.WHITE); mExerciseP.setTextSize(78); mExerciseP.setTypeface(black); mExerciseP.setShadowLayer(8, 0, 3, 0xAA000000);
+        mRepP.setColor(ACCENT); mRepP.setTextSize(98); mRepP.setTypeface(black); mRepP.setShadowLayer(8, 0, 3, 0xAA000000);
+        mSmall.setColor(0xFFB8C0CC); mSmall.setTextSize(26); mSmall.setTypeface(med);
+        mCueText.setColor(0xFF0E1014); mCueText.setTextSize(38); mCueText.setTypeface(black);
         mCueBg.setColor(AMBER); mCueBg.setStyle(Paint.Style.FILL);
+        mPanel.setColor(0xDD0E1014); mPanel.setStyle(Paint.Style.FILL);
     }
 
     public void setFrame(Bitmap b) { mFrame = b; }
@@ -149,20 +153,30 @@ public class FragmentRender extends View {
             }
 
             // ---- coaching HUD ----
-            canvas.drawText("Vyāyāma", 24, 50, mTitle);
-            canvas.drawText("FPS " + mFps + "  ·  tap to rotate", 24, 90, mSmall);
-
+            String engine = MainActivity.runtime_var == 'D' ? "NPU"
+                    : MainActivity.runtime_var == 'G' ? "GPU" : "CPU";
             String ex = mExercising ? mExercise : "READY";
-            canvas.drawText(ex, 24, 170, mExerciseP);
-            canvas.drawText(mReps + " reps", 24, 240, mRepP);
+            String repStr = Integer.toString(mReps);
+
+            float L = 28, panelTop = 24, panelH = 252;
+            float exW = mExerciseP.measureText(ex);
+            float panelW = Math.max(exW + 48, 380);
+            canvas.drawRoundRect(new RectF(16, panelTop, 16 + panelW, panelTop + panelH), 22, 22, mPanel);
+
+            canvas.drawText("VYĀYĀMA", L, panelTop + 44, mTitle);
+            canvas.drawText(engine + "  ·  " + mFps + " FPS  ·  tap to rotate", L, panelTop + 78, mSmall);
+            canvas.drawText(ex, L, panelTop + 156, mExerciseP);
+            canvas.drawText(repStr, L, panelTop + 240, mRepP);
+            float rx = L + mRepP.measureText(repStr) + 16;
+            canvas.drawText("REPS", rx, panelTop + 240, mSmall);
+            if (mExercising && mFormScore >= 0) canvas.drawText("form " + mFormScore, rx, panelTop + 208, mSmall);
 
             if (mExercising && mCue != null && !mCue.isEmpty()) {
-                float pad = 18;
+                float pad = 22, cueTop = panelTop + panelH + 14, h = 58;
                 float tw = mCueText.measureText(mCue);
-                float top = 270, h = 64;
-                mCueBg.setColor(("Good rep!".equals(mCue)) ? ACCENT : AMBER);
-                canvas.drawRoundRect(new RectF(24, top, 24 + tw + 2 * pad, top + h), 16, 16, mCueBg);
-                canvas.drawText(mCue, 24 + pad, top + 44, mCueText);
+                mCueBg.setColor("Good rep!".equals(mCue) ? ACCENT : AMBER);
+                canvas.drawRoundRect(new RectF(16, cueTop, 16 + tw + 2 * pad, cueTop + h), 16, 16, mCueBg);
+                canvas.drawText(mCue, 16 + pad, cueTop + 40, mCueText);
             }
         } finally {
             mLock.unlock();
