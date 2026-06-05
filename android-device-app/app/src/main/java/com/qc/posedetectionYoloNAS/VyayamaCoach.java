@@ -37,7 +37,7 @@ public class VyayamaCoach {
     private static final int SAMPLE_LEN = 13;
     // sample columns (see spec C0.1):
     //  0 kneeAvg 1 elbowAvg 2 openness 3 torso 4 kneeL 5 kneeR 6 elbowL 7 elbowR 8 hipSag
-    //  9 wristAboveSh 10 hipFlex 11 kneeLiftL 12 kneeLiftR
+    //  9 wristAboveSh 10 hipFlex 11 hipDrop 12 (unused)
     private final float[][] ring = new float[WIN][SAMPLE_LEN];
     private int ringCount = 0;          // number of valid samples (<= WIN)
     private int ringHead = 0;           // index where the NEXT sample will be written
@@ -109,6 +109,10 @@ public class VyayamaCoach {
     static final float CURL_TORSO_AMP_MAX = 18f;   // a real curl keeps the trunk still (no swing)
     static final float CURL_HIP_AMP_MAX   = 18f;   // no trunk fold → this is what excludes sit-ups
     static final float CURL_FLEX_MIN      = 80f;   // active elbow must reach a genuinely flexed angle
+    // ---- squat: viewpoint-stable hip-drop (fires when a front-on knee angle foreshortens flat) ----
+    static final float HIP_DROP_AMP_MIN = 0.30f;   // hip-drop swing (torso-lengths) that signals a squat
+    static final float SQUAT_HIP_TOP    = -0.85f;  // standing (hips well above the knees)
+    static final float SQUAT_HIP_BOTTOM = -0.15f;  // ~parallel (hips near the knee line)
 
     // ---- PLANK (optional isometric) ----
     static final float PLANK_TORSO_MIN   = 60f;
@@ -134,14 +138,13 @@ public class VyayamaCoach {
         float sag = hipSag(f);
         float wristUp = wristAboveShoulder(f);
         float hipF = hipFlex(f);
-        float liftL = kneeLift(f, L_HIP, L_KN);
-        float liftR = kneeLift(f, R_HIP, R_KN);
+        float hipDr = hipDrop(f);   // viewpoint-stable squat depth (col 11)
 
         // write the 13-wide sample in place into the ring (zero-alloc)
         float[] s = ring[ringHead];
         s[0] = kneeAvg; s[1] = elbowAvg; s[2] = open; s[3] = torso;
         s[4] = kneeL; s[5] = kneeR; s[6] = elbowL; s[7] = elbowR; s[8] = sag;
-        s[9] = wristUp; s[10] = hipF; s[11] = liftL; s[12] = liftR;
+        s[9] = wristUp; s[10] = hipF; s[11] = hipDr; s[12] = 0f;
         ringHead = (ringHead + 1) % WIN;
         if (ringCount < WIN) ringCount++;
 
@@ -194,10 +197,11 @@ public class VyayamaCoach {
         float kneeAmp = amp(0), elbowAmp = amp(1), openAmp = amp(2);
         // new-move motion signals (NaN→0 for the proven vectors, so the gate is unchanged there).
         float hipAngAmp = amp(10);                       // sit-up trunk-fold amplitude (degrees)
+        float hipDropAmp = amp(11);                      // squat hip-drop swing (torso-lengths)
         // activity is the SUPERSET of the original metric: adding more max-terms can only raise it,
         // never lower it, so every proven-13 vector keeps its exact activity value (new amps are 0).
         float activity = Math.max(kneeAmp, Math.max(elbowAmp,
-                Math.max(openAmp * 140f, hipAngAmp)));
+                Math.max(openAmp * 140f, Math.max(hipAngAmp, hipDropAmp * 120f))));
 
         // Isometric-hold override: a PLANK has ~zero amplitude, so the amplitude gate would never
         // wake it. A sustained, still, in-plane horizontal hold (plankStillStreak, which itself
@@ -234,7 +238,7 @@ public class VyayamaCoach {
         } else if (!Float.isNaN(wristUp) && wristUp > WRIST_UP_PRESS && elbowAmp > ELBOW_PRESS_AMP
                 && torsoVal && avgTorso < PRESS_TORSO_MAX && kneeAmp < PRESS_KNEE_AMP_MAX && openAmp <= 0.40f) {
             cand = "SHOULDER_PRESS";
-        } else if (kneeAmp > 30f) {
+        } else if (kneeAmp > 30f || hipDropAmp > HIP_DROP_AMP_MIN) {
             cand = "SQUAT";
         } else if (elbowAmp > 25f && kneeAmp < 20f && openAmp <= 0.40f
                 && torsoAmp < CURL_TORSO_AMP_MAX
@@ -289,6 +293,14 @@ public class VyayamaCoach {
         if (calArmed && !calLocked) updateCalObs(v);
 
         float p = (v - adaptTop) / (adaptBottom - adaptTop);
+        if (ex.equals("SQUAT")) {
+            // viewpoint-stable hip-drop can drive the rep when a front-on knee angle stays flat.
+            float hd = s[11];
+            if (!Float.isNaN(hd)) {
+                float pHip = (hd - SQUAT_HIP_TOP) / (SQUAT_HIP_BOTTOM - SQUAT_HIP_TOP);
+                if (pHip > p) p = pHip;
+            }
+        }
         curP = p;
 
         // Recognition latency catch-up: cyclic exercises (jack, press, sit-up, high-knees) are often
@@ -759,14 +771,15 @@ public class VyayamaCoach {
         return avg(l, r);
     }
 
-    /** (hipCy - kneeCy)/torsoLen for one side; +ve = knee lifted. */
-    private static float kneeLift(float[][] kp, int hipSide, int knIdx) {
-        if (missing(kp, L_SH) || missing(kp, R_SH) || missing(kp, L_HIP) || missing(kp, R_HIP)
-                || missing(kp, knIdx)) return Float.NaN;
-        float hipCy = (kp[L_HIP][1] + kp[R_HIP][1]) / 2f;
-        float kneeCy = kp[knIdx][1];
+    /** Viewpoint-stable squat depth: the hips' vertical position vs the knees, in torso-lengths.
+     *  Standing ≈ -0.85 (hips well above the knees); ~parallel ≈ -0.15. Robust to front-on knee-angle
+     *  foreshortening because the hips' vertical drop stays in the image plane. NaN if joints missing. */
+    private static float hipDrop(float[][] kp) {
+        if (missing(kp, L_HIP) || missing(kp, R_HIP) || missing(kp, L_KN) || missing(kp, R_KN)) return Float.NaN;
         float tl = torsoLenOf(kp);
         if (Float.isNaN(tl)) return Float.NaN;
+        float hipCy  = (kp[L_HIP][1] + kp[R_HIP][1]) / 2f;
+        float kneeCy = (kp[L_KN][1] + kp[R_KN][1]) / 2f;
         return (hipCy - kneeCy) / tl;
     }
 

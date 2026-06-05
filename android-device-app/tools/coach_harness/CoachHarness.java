@@ -59,6 +59,7 @@ public final class CoachHarness {
         case27_adaptiveLimitedRom();
         case28_glitchRobustness();
         case29_moderateSquat();
+        case30_foreshortenedSquat();
 
         System.out.println("==========================================");
         System.out.println("PASSED " + passed + " / " + total + (skipped > 0 ? ("  (SKIPPED " + skipped + ")") : ""));
@@ -531,6 +532,33 @@ public final class CoachHarness {
             for (int f = 0; f < 45; f++)
                 reps = c.onFrame(squatPose(142f + 23f*(float)Math.cos(2*Math.PI*f/45)), tNs()).reps; // 119..165
         expectAtLeast("half-depth squat counts (>=4)", reps, 4);
+    }
+
+    // ================= 30: foreshortened front-on squat (hip-drop fix) =================
+    static void case30_foreshortenedSquat() {
+        // The knee ANGLE stays ~176 (foreshortened flat) while the HIPS drop clearly. The old
+        // knee-only rule saw nothing here; the hip-drop signal must classify SQUAT and count reps.
+        VyayamaCoach c = mk(true);
+        int reps = 0; String key = "NONE";
+        for (int rep = 0; rep < 6; rep++)
+            for (int f = 0; f < 45; f++) {
+                float d = 0.5f - 0.5f*(float)Math.cos(2*Math.PI*f/45);  // 0 -> 1 -> 0 hip drop
+                VyayamaCoach.Result r = c.onFrame(foreshortenedSquatPose(d), tNs());
+                reps = r.reps; key = r.key;
+            }
+        expectKey ("foreshortened squat -> SQUAT (hip-drop)", key, "SQUAT");
+        expectAtLeast("foreshortened squat counts (>=4)", reps, 4);
+    }
+
+    /** A front-on squat whose knee ANGLE stays ~straight (foreshortened) while the HIPS drop.
+     *  Lowers ONLY the upper body (shoulders/hips/arms/head) over fixed knees+ankles, so the
+     *  hip-knee-ankle joint stays ~collinear (knee ~176) yet mid-hip drops toward the knee line. */
+    static float[][] foreshortenedSquatPose(float d) {
+        float[][] p = squatPose(176f);
+        float drop = d * 0.75f * 80f;   // up to ~0.75 torso-lengths (torsoLen ~ 80)
+        int[] upper = { NOSE, L_EYE, R_EYE, L_EAR, R_EAR, L_SH, R_SH, L_EL, R_EL, L_WR, R_WR, L_HIP, R_HIP };
+        for (int idx : upper) if (!(p[idx][0]==0f && p[idx][1]==0f)) p[idx][1] += drop;
+        return p;
     }
 
     // ============================================================
