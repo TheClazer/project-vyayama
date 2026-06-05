@@ -29,7 +29,7 @@ public class FragmentRender extends View {
     private ArrayList<RectangleBox> boxlist = new ArrayList<>();
 
     private Bitmap mFrame;
-    private volatile int mRotationDeg = 90;     // tap to cycle; default 90 for back camera
+    private volatile int mRotationDeg = 0;      // tap to cycle (0/90/180/270) — same value drives frame + skeleton + coach
     private int mPrimaryIdx = -1;
 
     // coaching HUD state

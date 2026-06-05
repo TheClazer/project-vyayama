@@ -39,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
        System.loadLibrary("posedetectionYoloNAS");
     }
 
-    public static char runtime_var;  //TODO change here as well as main_activity.xml, change checked "android:checked="true""
+    public static char runtime_var = 'D';  // default to DSP = Hexagon NPU (matches main_activity.xml checked)
     RadioGroup rg;
     @Override
     protected void onCreate(Bundle savedInstanceState) {

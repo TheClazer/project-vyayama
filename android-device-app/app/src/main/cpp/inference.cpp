@@ -322,7 +322,7 @@ float*** execcomb(cv::Mat &img, int orig_width, int orig_height, int &numberofhu
         int index = distance(BBout_class.begin()+start, it);
 
         std::string classname = classnamemapping[index];
-        if(*it>=0.5 && (index%80) == 0)  //0 is for person class
+        if(*it>=0.35 && (index%80) == 0)  //0 is for person class (lowered 0.5->0.35: detect from more angles)
         {
             int x1 = BBout_boxcoords[i * 4 + 0];
             int y1 = BBout_boxcoords[i * 4 + 1];
