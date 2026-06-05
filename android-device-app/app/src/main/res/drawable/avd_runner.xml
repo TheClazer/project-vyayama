@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Run-cycle: swings the four limb groups in opposite phase and nudges the
+  speed streaks. Driven from SplashActivity via ((AnimatedVectorDrawable)
+  drawable).start(); stopped once the athlete settles centre-screen.
+-->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/runner_vector">
+
+    <target android:name="frontLeg" android:animation="@animator/run_leg_front" />
+    <target android:name="backLeg"  android:animation="@animator/run_leg_back" />
+    <target android:name="frontArm" android:animation="@animator/run_arm_front" />
+    <target android:name="backArm"  android:animation="@animator/run_arm_back" />
+    <target android:name="streaks"  android:animation="@animator/run_streaks" />
+
+</animated-vector>

@@ -19,14 +19,19 @@
         <uses-native-library
             android:name="libOpenCL.so"
             android:required="false" />
-        <activity android:name="com.qc.posedetectionYoloNAS.ProfileActivity"
+        <activity android:name="com.qc.posedetectionYoloNAS.SplashActivity"
+            android:theme="@style/Theme.Vyayama.Splash"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name="com.qc.posedetectionYoloNAS.ProfileActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <activity android:name="com.qc.posedetectionYoloNAS.MainActivity"
             android:exported="false"
             android:screenOrientation="portrait" />

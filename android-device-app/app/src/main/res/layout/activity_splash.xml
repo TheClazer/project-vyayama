@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Splash layout. The whole scene is a centred vertical column so the runner
+  sits above the wordmark. Text + underline start invisible; SplashActivity
+  drives them in. Tapping anywhere skips to MainActivity.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/splash_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ink"
+    android:clickable="true"
+    android:focusable="true">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal">
+
+        <!-- the running athlete (AnimatedVectorDrawable) -->
+        <ImageView
+            android:id="@+id/runner"
+            android:layout_width="172dp"
+            android:layout_height="172dp"
+            android:src="@drawable/avd_runner"
+            android:contentDescription="Vyayama running athlete" />
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="26dp" />
+
+        <!-- wordmark — sans-serif-black, volt -->
+        <TextView
+            android:id="@+id/wordmark"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Vyāyāma"
+            android:textColor="@color/volt"
+            android:textSize="40sp"
+            android:fontFamily="sans-serif-black"
+            android:includeFontPadding="false" />
+
+        <!-- underline that sweeps in left -> right (pivotX set to 0 in code) -->
+        <View
+            android:id="@+id/underline"
+            android:layout_width="184dp"
+            android:layout_height="2dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/volt" />
+
+        <!-- tagline — sans-serif-medium, muted, letter-spaced caps -->
+        <TextView
+            android:id="@+id/tagline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="AI FORM COACH"
+            android:textColor="@color/text_muted"
+            android:textSize="13sp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.35" />
+
+    </LinearLayout>
+
+</FrameLayout>
