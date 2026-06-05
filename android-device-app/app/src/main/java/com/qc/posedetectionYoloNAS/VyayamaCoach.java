@@ -3,7 +3,7 @@
 // Self-contained Java port of the proven Kotlin intelligence (verified 13/13 in
 // tools/threshold_tuner/verify_core.py), extended with:
 //   • a KeypointFilter preprocessing pass (One-Euro smoothing + teleport reject + gap-hold),
-//   • 4 new exercises (SHOULDER_PRESS, SITUP, HIGH_KNEES, optional isometric PLANK),
+//   • new exercises (SHOULDER_PRESS, SITUP, optional isometric PLANK),
 //   • adaptive per-user range calibration,
 //   • restored partial-rep flagging,
 //   • zero per-frame heap allocation (pre-allocated ring buffers, no ArrayDeque/ArrayList).
@@ -104,13 +104,11 @@ public class VyayamaCoach {
     static final float SITUP_HIP_AMP      = 35f;
     static final float SITUP_TORSO_AMP    = 25f;
     static final float SITUP_KNEE_AMP_MAX = 22f;
-    static final float HK_KNEELIFT_AMP    = 0.30f;
-    // Anti-phase floor for high-knees. A clean alternating run (one leg planted at a time) yields
-    // a window correlation around 0.50–0.55 — the planted leg's near-constant trace dilutes the
-    // anti-correlation — while squat/lunge knees move perfectly in phase (antiLR ≈ 0.0). 0.45
-    // separates them with comfortable margin in both directions.
-    static final float HK_ANTIPHASE_MIN   = 0.45f;
-    static final int   HK_CADENCE_MIN     = 2;
+    static final float SITUP_TORSO_MIN    = 30f;   // amplitude-driven floor (was a hard avgTorso>50 gate)
+    // ---- bicep-curl positive-evidence gates ----
+    static final float CURL_TORSO_AMP_MAX = 18f;   // a real curl keeps the trunk still (no swing)
+    static final float CURL_HIP_AMP_MAX   = 18f;   // no trunk fold → this is what excludes sit-ups
+    static final float CURL_FLEX_MIN      = 80f;   // active elbow must reach a genuinely flexed angle
 
     // ---- PLANK (optional isometric) ----
     static final float PLANK_TORSO_MIN   = 60f;
@@ -196,11 +194,10 @@ public class VyayamaCoach {
         float kneeAmp = amp(0), elbowAmp = amp(1), openAmp = amp(2);
         // new-move motion signals (NaN→0 for the proven vectors, so the gate is unchanged there).
         float hipAngAmp = amp(10);                       // sit-up trunk-fold amplitude (degrees)
-        float kneeLiftAmp = maxv(amp(11), amp(12));      // high-knee lift amplitude (torso-normalized)
         // activity is the SUPERSET of the original metric: adding more max-terms can only raise it,
         // never lower it, so every proven-13 vector keeps its exact activity value (new amps are 0).
         float activity = Math.max(kneeAmp, Math.max(elbowAmp,
-                Math.max(openAmp * 140f, Math.max(hipAngAmp, kneeLiftAmp * 140f))));
+                Math.max(openAmp * 140f, hipAngAmp)));
 
         // Isometric-hold override: a PLANK has ~zero amplitude, so the amplitude gate would never
         // wake it. A sustained, still, in-plane horizontal hold (plankStillStreak, which itself
@@ -217,32 +214,32 @@ public class VyayamaCoach {
 
         // ---- precompute new + existing features (NaN-safe) ----
         float avgTorso = mean(3);
-        float kneeSym  = meanAbsDiff(4, 5);
         float wristUp  = mean(9);
         float torsoAmp  = amp(3);
-        float antiLR   = antiPhase(11, 12);
-        int   cadence  = Math.max(meanCrossings(11), meanCrossings(12));
         boolean torsoVal = !Float.isNaN(avgTorso);
 
-        // ---- ordered 9-way decision (most-specific first; first match wins) ----
+        // ---- ordered 7-way decision (most-specific first; first match wins) ----
+        // SITUP is ordered BEFORE PUSHUP/PRESS/CURL so an arm-moving sit-up is claimed by SITUP
+        // before any elbow-amplitude move can grab it. BICEP_CURL now requires positive evidence
+        // (still trunk + a genuinely flexed elbow) so it is no longer the catch-all.
         String cand;
         if (openAmp > 0.40f && (Float.isNaN(wristUp) || wristUp > WRIST_UP_JACK)) {
             cand = "JUMPING_JACK";
-        } else if (kneeLiftAmp > HK_KNEELIFT_AMP && antiLR >= HK_ANTIPHASE_MIN && cadence >= HK_CADENCE_MIN) {
-            cand = "HIGH_KNEES";
-        } else if (torsoVal && avgTorso > 50f && hipAngAmp > SITUP_HIP_AMP && torsoAmp > SITUP_TORSO_AMP
-                && kneeAmp < SITUP_KNEE_AMP_MAX && elbowAmp < 25f) {
+        } else if (torsoVal && avgTorso > SITUP_TORSO_MIN
+                && hipAngAmp > SITUP_HIP_AMP && torsoAmp > SITUP_TORSO_AMP
+                && kneeAmp < SITUP_KNEE_AMP_MAX && elbowAmp < 40f) {
             cand = "SITUP";
         } else if (torsoVal && avgTorso > 50f && elbowAmp > 25f && hipAngAmp < SITUP_HIP_AMP) {
             cand = "PUSHUP";
         } else if (!Float.isNaN(wristUp) && wristUp > WRIST_UP_PRESS && elbowAmp > ELBOW_PRESS_AMP
                 && torsoVal && avgTorso < PRESS_TORSO_MAX && kneeAmp < PRESS_KNEE_AMP_MAX && openAmp <= 0.40f) {
             cand = "SHOULDER_PRESS";
-        } else if (kneeAmp > 30f && kneeSym < 25f && antiLR < HK_ANTIPHASE_MIN) {
+        } else if (kneeAmp > 30f) {
             cand = "SQUAT";
-        } else if (kneeAmp > 30f && kneeSym >= 25f && antiLR < HK_ANTIPHASE_MIN) {
-            cand = "LUNGE";
-        } else if (elbowAmp > 25f && kneeAmp < 20f && torsoVal && avgTorso < 35f
+        } else if (elbowAmp > 25f && kneeAmp < 20f && openAmp <= 0.40f
+                && torsoAmp < CURL_TORSO_AMP_MAX
+                && hipAngAmp < CURL_HIP_AMP_MAX
+                && minActiveElbow() < CURL_FLEX_MIN
                 && (Float.isNaN(wristUp) || wristUp < WRIST_UP_PRESS)) {
             cand = "BICEP_CURL";
         } else if (torsoVal && avgTorso > PLANK_TORSO_MIN && elbowAmp < 12f && kneeAmp < 12f
@@ -367,12 +364,10 @@ public class VyayamaCoach {
         switch (ex) {
             case "SQUAT":          return s[0];               // knee avg
             case "PUSHUP":         return s[1];               // elbow avg
-            case "LUNGE":          return minv(s[4], s[5]);   // front knee
             case "BICEP_CURL":     return minv(s[6], s[7]);   // active elbow
             case "JUMPING_JACK":   return s[2];               // openness
             case "SHOULDER_PRESS": return minv(s[6], s[7]);   // active elbow (inverted anchors)
             case "SITUP":          return s[10];              // hip flexion (trunk fold)
-            case "HIGH_KNEES":     return maxv(s[11], s[12]); // higher knee lift
             default:               return Float.NaN;
         }
     }
@@ -398,12 +393,10 @@ public class VyayamaCoach {
         switch (ex) {
             case "SQUAT":          defTop = 165; defBottom = 95;  break;
             case "PUSHUP":         defTop = 160; defBottom = 95;  break;
-            case "LUNGE":          defTop = 165; defBottom = 95;  break;
             case "BICEP_CURL":     defTop = 155; defBottom = 50;  break;
             case "JUMPING_JACK":   defTop = 0.15f; defBottom = 0.85f; break;
             case "SHOULDER_PRESS": defTop = 95;  defBottom = 165; break;   // inverted: bent rest → lockout
             case "SITUP":          defTop = 150; defBottom = 70;  break;
-            case "HIGH_KNEES":     defTop = 0.05f; defBottom = 0.45f; break;
             default:               defTop = 0;   defBottom = 1;   break;
         }
         dir = Math.signum(defBottom - defTop);
@@ -506,7 +499,7 @@ public class VyayamaCoach {
     /** Real-time, motion-aware coaching from the current rep phase + progress. */
     private String liveCue() {
         switch (reported) {
-            case "SQUAT": case "LUNGE": case "PUSHUP":
+            case "SQUAT": case "PUSHUP":
                 switch (phase) {
                     case "DESCENDING": return curP < 0.6f ? "Lower…" : "Almost — deeper";
                     case "BOTTOM":     return "Now drive up!";
@@ -540,8 +533,6 @@ public class VyayamaCoach {
                     case "ASCENDING":  return "Roll back down";
                     default:           return "";
                 }
-            case "HIGH_KNEES":
-                return "Knees up — drive!";
             case "PLANK":
                 return plankActive ? plankHoldCue() : "Get level — hips in line";
             default: return "";
@@ -566,16 +557,6 @@ public class VyayamaCoach {
                 if (depth < 0.75f && sev < 9)  { cue = "Go deeper — hips below knees"; warn = true; sev = 9; }
                 if (sym > 22f && sev < 6)      { cue = "Even out your weight"; warn = true; sev = 6; }
                 if (maxTorso > 50f && sev < 5) { cue = "Chest up — back straight"; warn = true; sev = 5; }
-                break;
-            }
-            case "LUNGE": {
-                float depth = clamp01((165f - repMinPair(4, 5)) / 70f);
-                float maxTorso = repMax(3);
-                float upright = clamp01(1f - Math.max(0f, maxTorso - 25f) / 45f);
-                score = 100f * (0.5f * depth + 0.3f * upright + 0.2f * tempo);
-                cue = "Nice lunge!";
-                if (depth < 0.7f && sev < 8)   { cue = "Drop the back knee lower"; warn = true; sev = 8; }
-                if (maxTorso > 45f && sev < 6) { cue = "Stay upright"; warn = true; sev = 6; }
                 break;
             }
             case "PUSHUP": {
@@ -625,17 +606,6 @@ public class VyayamaCoach {
                 if (frames < 14 && sev < 6)   { cue = "Slow it down — control the descent"; warn = true; sev = 6; }
                 break;
             }
-            case "HIGH_KNEES": {
-                // judged on the window, not repRing
-                float liftL = amp(11), liftR = amp(12);
-                float height = clamp01(maxv(liftL, liftR) / 0.6f);
-                float symm = clamp01(1f - Math.abs(liftL - liftR) / 0.3f);
-                score = 100f * (0.6f * height + 0.4f * symm);
-                cue = "Great drive!";
-                if (height < 0.6f && sev < 7) { cue = "Drive knees higher — hip height"; warn = true; sev = 7; }
-                if (symm < 0.6f && sev < 6)   { cue = "Even it out — match both knees"; warn = true; sev = 6; }
-                break;
-            }
             default: break;
         }
         lastCue = cue; lastCueWarn = warn; lastScore = Math.round(clamp01(score / 100f) * 100f);
@@ -674,11 +644,6 @@ public class VyayamaCoach {
         for (int i = 0; i < repCount; i++) { float v = repRing[i][col]; if (!Float.isNaN(v)) acc += (v - m) * (v - m); }
         return acc / n;
     }
-    private float repMinPair(int a, int b) {
-        float m = Float.MAX_VALUE; boolean any = false;
-        for (int i = 0; i < repCount; i++) { float v = minv(repRing[i][a], repRing[i][b]); if (!Float.isNaN(v)) { m = Math.min(m, v); any = true; } }
-        return any ? m : Float.NaN;
-    }
     private float repMeanAbsDiff(int a, int b) {
         float sum = 0; int n = 0;
         for (int i = 0; i < repCount; i++) { float va = repRing[i][a], vb = repRing[i][b]; if (!Float.isNaN(va) && !Float.isNaN(vb)) { sum += Math.abs(va - vb); n++; } }
@@ -697,56 +662,18 @@ public class VyayamaCoach {
         for (int i = 0; i < ringCount; i++) { float v = ring[i][col]; if (!Float.isNaN(v)) { sum += v; n++; } }
         return n > 0 ? sum / n : Float.NaN;
     }
-    private float meanAbsDiff(int a, int b) {
-        float sum = 0; int n = 0;
-        for (int i = 0; i < ringCount; i++) { float va = ring[i][a], vb = ring[i][b]; if (!Float.isNaN(va) && !Float.isNaN(vb)) { sum += Math.abs(va - vb); n++; } }
-        return n > 0 ? sum / n : 0f;
-    }
 
-    /**
-     * Anti-phase score in [0,1] over the window for two columns: 1 = perfectly out of phase
-     * (one rises while the other falls), 0 = in phase. Computed as the negative normalized
-     * correlation of the two mean-centred, frame-to-frame-aligned series, clamped to [0,1].
-     */
-    private float antiPhase(int a, int b) {
-        // collect chronological order: ring index 0..ringCount-1 already chronological while ringCount<WIN,
-        // but once full the oldest is at ringHead. Use chronological iteration.
-        float meanA = mean(a), meanB = mean(b);
-        if (Float.isNaN(meanA) || Float.isNaN(meanB)) return 0f;
-        float cov = 0, va = 0, vb = 0; int n = 0;
-        for (int k = 0; k < ringCount; k++) {
-            int idx = chronoIndex(k);
-            float xa = ring[idx][a], xb = ring[idx][b];
-            if (Float.isNaN(xa) || Float.isNaN(xb)) continue;
-            float da = xa - meanA, db = xb - meanB;
-            cov += da * db; va += da * da; vb += db * db; n++;
+    /** Minimum over the window of the more-flexed elbow (min(elbowL,elbowR) per frame). A secondary
+     *  positive-evidence gate that the elbow genuinely flexed during a curl — NOT the sit-up
+     *  discriminator (sit-ups are excluded by the still-trunk/still-hips gates torsoAmp/hipAngAmp<18
+     *  and by SITUP being ordered ahead of BICEP_CURL in the ladder). */
+    private float minActiveElbow() {
+        float m = Float.MAX_VALUE; boolean any = false;
+        for (int i = 0; i < ringCount; i++) {
+            float v = minv(ring[i][6], ring[i][7]);   // 6=elbowL 7=elbowR
+            if (!Float.isNaN(v)) { m = Math.min(m, v); any = true; }
         }
-        if (n < 3 || va < 1e-6f || vb < 1e-6f) return 0f;
-        float corr = cov / (float) Math.sqrt(va * vb);
-        float anti = -corr;                         // out-of-phase → positive
-        return clamp01(anti);
-    }
-
-    /** Mean-crossing count over the window for a column (proxy for cadence). */
-    private int meanCrossings(int col) {
-        float m = mean(col);
-        if (Float.isNaN(m)) return 0;
-        int crossings = 0; boolean havePrev = false; boolean prevAbove = false;
-        for (int k = 0; k < ringCount; k++) {
-            int idx = chronoIndex(k);
-            float v = ring[idx][col];
-            if (Float.isNaN(v)) continue;
-            boolean above = v >= m;
-            if (havePrev && above != prevAbove) crossings++;
-            prevAbove = above; havePrev = true;
-        }
-        return crossings;
-    }
-
-    /** Map chronological position k (0=oldest) to a physical ring index. */
-    private int chronoIndex(int k) {
-        if (ringCount < WIN) return k;              // not yet wrapped → write order == chronological
-        return (ringHead + k) % WIN;                // oldest sits at ringHead once full
+        return any ? m : Float.NaN;
     }
 
     // ============================== geometry ==============================
@@ -861,23 +788,16 @@ public class VyayamaCoach {
         if (!na && !nb) return Math.min(a, b);
         if (!na) return a; if (!nb) return b; return Float.NaN;
     }
-    private static float maxv(float a, float b) {
-        boolean na = Float.isNaN(a), nb = Float.isNaN(b);
-        if (!na && !nb) return Math.max(a, b);
-        if (!na) return a; if (!nb) return b; return Float.NaN;
-    }
     private static float clamp01(float v) { return Math.max(0f, Math.min(1f, v)); }
 
     private static String pretty(String s) {
         switch (s) {
             case "SQUAT": return "SQUAT";
             case "PUSHUP": return "PUSH-UP";
-            case "LUNGE": return "LUNGE";
             case "BICEP_CURL": return "BICEP CURL";
             case "JUMPING_JACK": return "JUMPING JACK";
             case "SHOULDER_PRESS": return "SHOULDER PRESS";
             case "SITUP": return "SIT-UP";
-            case "HIGH_KNEES": return "HIGH KNEES";
             case "PLANK": return "PLANK";
             case "UNKNOWN": return "…";
             default: return "READY";

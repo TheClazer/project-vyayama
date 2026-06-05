@@ -23,8 +23,8 @@ public final class ProfileStore {
     private static final String DEFAULT  = "Athlete";
 
     /** canonical exercise ids — must match VyayamaCoach reported ids. */
-    public static final String[] EXERCISES = {"SQUAT", "PUSHUP", "LUNGE", "BICEP_CURL", "JUMPING_JACK",
-            "SHOULDER_PRESS", "SITUP", "HIGH_KNEES"};   // PLANK excluded — its reps encode seconds, not reps
+    public static final String[] EXERCISES = {"SQUAT", "PUSHUP", "BICEP_CURL", "JUMPING_JACK",
+            "SHOULDER_PRESS", "SITUP"};   // PLANK excluded — its reps encode seconds, not reps
 
     private static SharedPreferences sp;
 
@@ -137,12 +137,10 @@ public final class ProfileStore {
         switch (exKey) {
             case "SQUAT":        return "Squat";
             case "PUSHUP":       return "Push-up";
-            case "LUNGE":        return "Lunge";
             case "BICEP_CURL":   return "Bicep Curl";
             case "JUMPING_JACK": return "Jumping Jack";
             case "SHOULDER_PRESS": return "Shoulder Press";
             case "SITUP":        return "Sit-up";
-            case "HIGH_KNEES":   return "High Knees";
             case "PLANK":        return "Plank";
             default:             return exKey;
         }

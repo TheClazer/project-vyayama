@@ -48,7 +48,10 @@ public final class CoachHarness {
         // ---- new exercises 22-25 ----
         case22_shoulderPress();
         case23_situp();
-        case24_highKnees();
+        case24_realCurl();              // (a) positive control
+        case24b_situpArmsBehindHead();  // (b) THE reported bug
+        case24c_squatArmSwing();        // (c)
+        case24d_pressNotCurl();         // (d)
         case25_plank();
 
         // ---- switch + adaptive 26-28 ----
@@ -356,36 +359,76 @@ public final class CoachHarness {
         expectBool("situp not mislocked as pushup", misPush, false);
     }
 
-    // ================= 24: high knees =================
-    static void case24_highKnees() {
+    // ============== (a) positive control: real curl stays BICEP_CURL ==============
+    static void case24_realCurl() {
         VyayamaCoach c = mk(true);
-        int reps = 0; String key = "NONE"; boolean misSquat = false, misJack = false;
-        // Alternating discrete knee raises. Each lift: the active leg goes 0→0.5→0 over `liftFrames`
-        // while the other stays planted (0). Between lifts both feet are briefly grounded, so
-        // maxv(liftL,liftR) returns to ~0 (TOP) and each raise crosses 0.05→0.45→0.05 = one rep.
-        // Lifts alternate L/R so the LR series are anti-phase over the window (HIGH_KNEES signature).
-        // 10 lifts so that even with ~2 lost to acquisition latency we comfortably clear >=6.
-        int lifts = 10;
-        int liftFrames = 16;   // ~0.53s up+down (>= minRepMs)
-        boolean locked = false;
-        for (int lift = 0; lift < lifts; lift++) {
-            boolean leftLeg = (lift % 2 == 0);
-            for (int f = 0; f < liftFrames; f++) {
-                float amt = 0.5f - 0.5f*(float)Math.cos((float)(2*Math.PI*f/liftFrames)); // 0→1→0
-                float val = 0.5f * amt;
-                float liftL = leftLeg ? val : 0f;
-                float liftR = leftLeg ? 0f : val;
-                VyayamaCoach.Result r = c.onFrame(highKneePose(liftL, liftR), tNs());
-                reps = r.reps; key = r.key;
-                if (key.equals("HIGH_KNEES")) locked = true;
-                if (locked && r.key.equals("SQUAT")) misSquat = true;
-                if (locked && r.key.equals("JUMPING_JACK")) misJack = true;
+        String key = "NONE"; int reps = 0;
+        for (int rep = 0; rep < 4; rep++)
+            for (int f = 0; f < 40; f++) {
+                // elbow 150 (extended) → 50 (curled) → 150; trunk + legs dead still.
+                float elbow = 100f - 50f*(float)Math.cos(2*Math.PI*f/40);  // 50..150
+                VyayamaCoach.Result r = c.onFrame(curlPose(elbow), tNs());
+                key = r.key; reps = r.reps;
             }
-        }
-        expectKey ("high knees key", key, "HIGH_KNEES");
-        expectAtLeast("high knees reps (>=6)", reps, 6);
-        expectBool("high knees stays locked (no squat relapse)", misSquat, false);
-        expectBool("high knees not mislocked as jack", misJack, false);
+        expectKey ("real curl stays BICEP_CURL", key, "BICEP_CURL");
+        expectAtLeast("real curl reps (>=3)", reps, 3);
+    }
+
+    // ============== (b) THE reported bug: arm-moving sit-up must be SITUP, never curl ==============
+    static void case24b_situpArmsBehindHead() {
+        VyayamaCoach c = mk(true);
+        String key = "NONE"; int reps = 0;
+        boolean everCurl = false, everLocked = false;
+        for (int rep = 0; rep < 5; rep++)
+            for (int f = 0; f < 40; f++) {
+                float phase = (float)(2*Math.PI*f/40);
+                // trunk folds from flat (150) to crunched (70) → big hipAngAmp (sit-up signature).
+                float hipFlex = 110f + 40f*(float)Math.cos(phase);   // 70..150 fold
+                float armSwing = 0.5f - 0.5f*(float)Math.cos(phase); // elbows flare in/out with crunch
+                VyayamaCoach.Result r = c.onFrame(situpArmPose(hipFlex, armSwing), tNs());
+                key = r.key; reps = r.reps;
+                if (key.equals("SITUP")) everLocked = true;
+                if (r.key.equals("BICEP_CURL")) everCurl = true;
+            }
+        expectKey ("arm sit-up classified SITUP", key, "SITUP");
+        expectBool("arm sit-up NEVER locks BICEP_CURL (the bug)", everCurl, false);
+        expectBool("arm sit-up actually locked SITUP", everLocked, true);
+        expectAtLeast("arm sit-up reps (>=3)", reps, 3);
+    }
+
+    // ============== (c) squat with arm swing stays SQUAT ==============
+    static void case24c_squatArmSwing() {
+        VyayamaCoach c = mk(true);
+        String key = "NONE"; int reps = 0;
+        for (int rep = 0; rep < 5; rep++)
+            for (int f = 0; f < 45; f++) {
+                float phase = (float)(2*Math.PI*f/45);
+                float knee = 130f + 40f*(float)Math.cos(phase);          // kneeAmp ~80
+                float armSwing = 0.5f - 0.5f*(float)Math.cos(phase);
+                VyayamaCoach.Result r = c.onFrame(squatArmSwingPose(knee, armSwing), tNs());
+                key = r.key; reps = r.reps;
+            }
+        expectKey ("squat+arm-swing stays SQUAT", key, "SQUAT");
+        expectAtLeast("squat+arm-swing reps (>=4)", reps, 4);
+    }
+
+    // ============== (d) shoulder press is PRESS not curl (focused) ==============
+    static void case24d_pressNotCurl() {
+        VyayamaCoach c = mk(true);
+        String key = "NONE"; boolean everCurl = false, locked = false;
+        for (int rep = 0; rep < 4; rep++)
+            for (int f = 0; f < 40; f++) {
+                float phase = (float)(2*Math.PI*f/40);
+                float elbow = 130f - 35f*(float)Math.cos(phase);          // 95 bent → 165 lockout
+                float wristUp = 0.40f + 0.35f*(0.5f - 0.5f*(float)Math.cos(phase)); // wrists overhead
+                VyayamaCoach.Result r = c.onFrame(pressPose(elbow, wristUp), tNs());
+                key = r.key;
+                if (key.equals("SHOULDER_PRESS")) locked = true;
+                if (r.key.equals("BICEP_CURL")) everCurl = true;
+            }
+        expectKey ("press is SHOULDER_PRESS", key, "SHOULDER_PRESS");
+        expectBool("press never locks curl", everCurl, false);
+        expectBool("press actually locked", locked, true);
     }
 
     // ================= 25: plank (optional) =================
@@ -732,39 +775,72 @@ public final class CoachHarness {
     }
 
     /**
-     * High knees (upright): one knee lifted at a time. liftL/liftR are (hipCy-kneeCy)/torsoLen targets.
-     * Standing torso, arms low, ankles under knees.
+     * Sit-up with hands behind the head so the elbows oscillate with the crunch, filmed at a
+     * MODERATE camera angle (torso lean ~40°, deliberately NOT clearly >50). Hip fold swings
+     * 150→70 (big hipAngAmp), legs static, elbows track the shoulder rise (elbowAmp > 25 →
+     * the OLD engine's curl catch-all grabbed this). armSwing advances the elbow swing.
      */
-    static float[][] highKneePose(float liftL, float liftR) {
+    static float[][] situpArmPose(float hipFlexDeg, float armSwing) {
         float[][] p = blank();
-        float cx = 320, cy = 240, u = 1f;
-        float shY = cy - 60*u, hipY = cy + 20*u;
-        float halfW = 30*u;
-        float torsoLen = hipY - shY; // 80
+        float cx = 320, cy = 250, u = 1f;
+        float hipX = cx + 40*u, hipY = cy;
+        float halfW = 26*u;
+        float knX = hipX + 50*u, knY = hipY - 50*u;     // bent legs, static
+        float anX = hipX + 40*u, anY = hipY + 10*u;
+        float thighDx = knX - hipX, thighDy = knY - hipY;
+        double thighAng = Math.atan2(thighDy, thighDx);
+        // Use a SHALLOWER trunk angle than situpPose so torsoLean reads ~40° (moderate, not >50 clearly).
+        double trunkAng = thighAng + Math.toRadians(hipFlexDeg);
+        float trunkLen = 80*u;
+        float shCx = hipX + (float)Math.cos(trunkAng)*trunkLen;
+        float shCy = hipY + (float)Math.sin(trunkAng)*trunkLen;
+        double perp = trunkAng + Math.PI/2;
+        float ox = (float)Math.cos(perp)*halfW, oy = (float)Math.sin(perp)*halfW;
+        p[L_SH]=new float[]{shCx-ox, shCy-oy};
+        p[R_SH]=new float[]{shCx+ox, shCy+oy};
+        double hperp = thighAng + Math.PI/2;
+        float hox = (float)Math.cos(hperp)*halfW, hoy=(float)Math.sin(hperp)*halfW;
+        p[L_HIP]=new float[]{hipX-hox, hipY-hoy};
+        p[R_HIP]=new float[]{hipX+hox, hipY+hoy};
+        p[L_KN]=new float[]{knX-hox, knY-hoy};
+        p[R_KN]=new float[]{knX+hox, knY-hoy};
+        p[L_AN]=new float[]{anX-hox, anY-hoy};
+        p[R_AN]=new float[]{anX+hox, anY+hoy};
+        // HANDS BEHIND HEAD. Build the arm rigidly in the TRUNK-LOCAL basis so the whole arm
+        // rotates WITH the crunch (the elbow joint angle stays open ~110-150, min never < 80, so
+        // the curl-flex proof minActiveElbow()<80 fails). A small `flare` then perturbs ONLY the
+        // elbow along the trunk-perp axis → a MODERATE elbowAmp in [25,40): big enough that the
+        // OLD engine's curl catch-all grabbed this, small enough to clear SITUP's elbowAmp<40 gate.
+        float ux = (float)Math.cos(trunkAng), uy = (float)Math.sin(trunkAng); // along trunk (hip→sh)
+        float px = (float)Math.cos(perp),     py = (float)Math.sin(perp);     // trunk-perp (shoulder span)
+        // Arm built rigidly in the trunk frame so it rotates WITH the crunch and the joint angle
+        // stays OPEN (no sharp curl fold). `flare` drives the elbow OUT along ±perp with armSwing,
+        // opening/closing the elbow joint by a MODERATE amount → elbowAmp in [25,40): big enough
+        // that the OLD engine's curl catch-all grabbed this, small enough to clear SITUP's <40 gate.
+        float flare = 10f*u*armSwing;                    // elbow perp-flare oscillates → moderate elbowAmp
+        // elbow: out along ±perp from the shoulder, and UP the trunk a little (toward the head).
+        float elPerp = 14f*u + flare, elAlong = 16f*u;
+        p[L_EL]=new float[]{(shCx-ox) - px*elPerp + ux*elAlong, (shCy-oy) - py*elPerp + uy*elAlong};
+        p[R_EL]=new float[]{(shCx+ox) + px*elPerp + ux*elAlong, (shCy+oy) + py*elPerp + uy*elAlong};
+        // wrist: tucked behind the head — UP the trunk (toward the head) and near the midline.
+        float wrPerp = 4f*u, wrAlong = 30f*u;
+        p[L_WR]=new float[]{(shCx-ox) - px*wrPerp + ux*wrAlong, (shCy-oy) - py*wrPerp + uy*wrAlong};
+        p[R_WR]=new float[]{(shCx+ox) + px*wrPerp + ux*wrAlong, (shCy+oy) + py*wrPerp + uy*wrAlong};
+        head(p, shCx + (float)Math.cos(trunkAng)*30*u, shCy + (float)Math.sin(trunkAng)*30*u, 200f);
+        return p;
+    }
 
-        p[L_SH]=new float[]{cx-halfW, shY};
-        p[R_SH]=new float[]{cx+halfW, shY};
-        p[L_HIP]=new float[]{cx-halfW, hipY};
-        p[R_HIP]=new float[]{cx+halfW, hipY};
-        // knee y = hipCy - lift*torsoLen (lift>0 raises the knee above the hip line).
-        float lKnY = hipY - liftL*torsoLen;
-        float rKnY = hipY - liftR*torsoLen;
-        // lifted knee draws forward (x toward centre) proportional to lift; planted leg straight down.
-        float lKnX = cx-halfW + 40*u*liftL;
-        float rKnX = cx+halfW - 40*u*liftR;
-        p[L_KN]=new float[]{lKnX, lKnY};
-        p[R_KN]=new float[]{rKnX, rKnY};
-        // Lower leg hangs ~vertically from the knee (shank stays plumb), so the KNEE ANGLE stays
-        // running-like (~100°+) instead of collapsing into a deep squat bend. Ankle directly below knee.
-        float shank = 70*u;
-        p[L_AN]=new float[]{lKnX, lKnY + shank};
-        p[R_AN]=new float[]{rKnX, rKnY + shank};
-        // arms low/pumping but small amplitude
-        p[L_EL]=new float[]{cx-halfW-12*u, shY+30*u};
-        p[R_EL]=new float[]{cx+halfW+12*u, shY+30*u};
-        p[L_WR]=new float[]{cx-halfW-16*u, shY+55*u};
-        p[R_WR]=new float[]{cx+halfW+16*u, shY+55*u};
-        head(p, cx, shY-30*u, 200f);
+    /** Squat where the arms also swing (front raise) — knees drive the rep; arms are a distractor. */
+    static float[][] squatArmSwingPose(float kneeDeg, float armSwing) {
+        float[][] p = squatPose(kneeDeg);   // legs do the real work (kneeAmp large)
+        float cx = 320, u = 1f;
+        float shY = 240 - 60*u;
+        // elbows bend/extend with the swing → nonzero elbowAmp, but kneeAmp dominates and wins SQUAT.
+        float drop = 40f*u*(1f - armSwing);
+        p[L_EL]=new float[]{cx-32*u, shY+25*u};
+        p[R_EL]=new float[]{cx+32*u, shY+25*u};
+        p[L_WR]=new float[]{cx-36*u, shY+25*u+drop};   // wrists stay BELOW shoulders (low wristUp)
+        p[R_WR]=new float[]{cx+36*u, shY+25*u+drop};
         return p;
     }
 
