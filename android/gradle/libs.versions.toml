@@ -1,8 +1,8 @@
 # Version catalog. Versions are conventional/stable; confirm on first Android Studio sync
 # (Gradle versions are "VIBE-with-verify" per bible §19).
 [versions]
-agp = "8.13.2"
-kotlin = "2.0.20"
+agp = "9.2.1"
+kotlin = "2.2.10"
 coreKtx = "1.13.1"
 lifecycle = "2.8.4"
 activityCompose = "1.9.2"

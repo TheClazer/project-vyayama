@@ -1,0 +1,8 @@
+build/
+.gradle/
+.cxx/
+*.dlc
+jniLibs/
+sdk/
+local.properties
+*.so
