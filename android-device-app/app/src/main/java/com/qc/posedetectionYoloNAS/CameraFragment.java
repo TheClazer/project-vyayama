@@ -1016,6 +1016,7 @@ public class CameraFragment extends Fragment
         if (!r.exercising) return;
         String ex = r.key;
         if (ex == null || ex.equals("NONE") || ex.equals("UNKNOWN")) return;
+        if (ex.equals("PLANK")) return;   // PLANK reps encode seconds held — not a rep/PB metric
         String prof = ProfileStore.getActive();
         if (prof.isEmpty()) return;
         if (!ex.equals(mPrevExKey)) { mPrevExKey = ex; mPrevReps = 0; }   // new exercise -> fresh count
