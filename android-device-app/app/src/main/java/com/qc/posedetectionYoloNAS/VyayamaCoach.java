@@ -88,7 +88,7 @@ public class VyayamaCoach {
     static final float RANGE_MARGIN        = 0.15f;
     static final float TOP_CLAMP_FRAC      = 0.40f;
     static final float BOTTOM_CLAMP_FRAC   = 0.40f;
-    static final float MIN_ADAPT_SPAN_FRAC = 0.45f;
+    static final float MIN_ADAPT_SPAN_FRAC = 0.30f;   // let shallower (camera-foreshortened) ranges adapt
     private boolean calArmed = false, calLocked = false;
     private int   calRepsSeen = 0;
     private float calObsTop = Float.NaN, calObsBottom = Float.NaN;
@@ -391,7 +391,7 @@ public class VyayamaCoach {
     /** Default rest/effort anchors + direction for an exercise (the signal contract). */
     private void loadDefaults(String ex) {
         switch (ex) {
-            case "SQUAT":          defTop = 165; defBottom = 95;  break;
+            case "SQUAT":          defTop = 165; defBottom = 115; break;   // half-squat counts (was 95 = near-parallel)
             case "PUSHUP":         defTop = 160; defBottom = 95;  break;
             case "BICEP_CURL":     defTop = 155; defBottom = 50;  break;
             case "JUMPING_JACK":   defTop = 0.15f; defBottom = 0.85f; break;

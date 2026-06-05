@@ -58,6 +58,7 @@ public final class CoachHarness {
         case26_switch();
         case27_adaptiveLimitedRom();
         case28_glitchRobustness();
+        case29_moderateSquat();
 
         System.out.println("==========================================");
         System.out.println("PASSED " + passed + " / " + total + (skipped > 0 ? ("  (SKIPPED " + skipped + ")") : ""));
@@ -519,6 +520,17 @@ public final class CoachHarness {
                 reps = c.onFrame(p, tNs()).reps;
             }
         expectReps("glitch robustness: 3-frame teleport, still 5 reps", reps, 5);
+    }
+
+    // ================= 29: half-depth squat counts (the reported "too strict" fix) =================
+    static void case29_moderateSquat() {
+        // knee only reaches ~119° (a clear half-squat, NOT to the ground). Must count.
+        VyayamaCoach c = mk(true);
+        int reps = 0;
+        for (int rep = 0; rep < 6; rep++)
+            for (int f = 0; f < 45; f++)
+                reps = c.onFrame(squatPose(142f + 23f*(float)Math.cos(2*Math.PI*f/45)), tNs()).reps; // 119..165
+        expectAtLeast("half-depth squat counts (>=4)", reps, 4);
     }
 
     // ============================================================
