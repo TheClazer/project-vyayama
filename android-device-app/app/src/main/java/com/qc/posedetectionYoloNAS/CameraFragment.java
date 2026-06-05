@@ -1086,6 +1086,7 @@ public class CameraFragment extends Fragment
                 }
                 mFragmentRender.setPrimaryIndex(primary);
                 mFragmentRender.setCoordsList(coordslist, BBlist);
+                mFragmentRender.setDiag(mCoach.diag());   // Coach Vision live snapshot (drawn only when enabled)
             }
         }
 

@@ -63,6 +63,15 @@ public class FragmentRender extends View {
     private final Paint mPbBig = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mPbSmall = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    // Coach Vision — live signal monitor (toggled from the 3-dot menu, OFF by default)
+    public static volatile boolean SHOW_VISION = false;
+    private volatile VyayamaCoach.Diag mDiag;
+    private final Paint mVisTitle = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mVisLabel = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mVisVal   = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mVisTrack = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mVisFill  = new Paint(Paint.ANTI_ALIAS_FLAG);
+
     // reused per-frame so onDraw allocates nothing (bible zero-alloc rule)
     private final RectF mRect = new RectF();
     private final RectF mPanelRect = new RectF();
@@ -102,6 +111,11 @@ public class FragmentRender extends View {
         mPbBg.setColor(ACCENT); mPbBg.setStyle(Paint.Style.FILL);
         mPbBig.setColor(0xFF0A0E12); mPbBig.setTextSize(54); mPbBig.setTypeface(black);
         mPbSmall.setColor(0xFF0A0E12); mPbSmall.setTextSize(22); mPbSmall.setTypeface(black); mPbSmall.setLetterSpacing(0.14f);
+        mVisTitle.setColor(ACCENT); mVisTitle.setTextSize(22); mVisTitle.setTypeface(black); mVisTitle.setLetterSpacing(0.18f);
+        mVisLabel.setColor(0xFF8A97A6); mVisLabel.setTextSize(20); mVisLabel.setTypeface(med); mVisLabel.setLetterSpacing(0.04f);
+        mVisVal.setColor(ACCENT); mVisVal.setTextSize(20); mVisVal.setTypeface(black);
+        mVisTrack.setColor(0xFF1B2330); mVisTrack.setStyle(Paint.Style.FILL);
+        mVisFill.setColor(ACCENT); mVisFill.setStyle(Paint.Style.FILL);
     }
 
     /** Flash a "new personal best" banner for ~2.6 s. Called from the capture loop. */
@@ -115,6 +129,70 @@ public class FragmentRender extends View {
 
     public void setCoach(String exercise, int reps, String cue, boolean cueWarn, int formScore, boolean exercising, int fps) {
         mExercise = exercise; mReps = reps; mCue = cue; mCueWarn = cueWarn; mFormScore = formScore; mExercising = exercising; mFps = fps;
+    }
+
+    public void setDiag(VyayamaCoach.Diag d) { mDiag = d; }
+
+    /** Coach Vision — a live, on-brand monitor of what the engine is sensing this instant. */
+    private void drawVision(Canvas canvas) {
+        VyayamaCoach.Diag d = mDiag;
+        float mgn = 18f, pad = 22f, rowH = 30f, h = 250f;
+        float w = getWidth() - 2 * mgn;
+        float top = getHeight() - h - mgn;
+        mPanelRect.set(mgn, top, mgn + w, top + h);
+        canvas.drawRoundRect(mPanelRect, 24, 24, mPanel);
+        mRect.set(mgn, top + 16, mgn + 5, top + h - 16);
+        canvas.drawRoundRect(mRect, 3, 3, mStripe);
+
+        float x = mgn + pad;
+        canvas.drawText("COACH VISION", x, top + 36, mVisTitle);
+        String sees = d.exercising ? mExercise : (d.candidate == null ? "—" : d.candidate);
+        String head = (d.exercising ? "LOCKED  " : "SEEING  ") + sees;
+        mVisVal.setColor(d.exercising ? ACCENT : 0xFF8A97A6);
+        canvas.drawText(head, mgn + w - pad - mVisVal.measureText(head), top + 36, mVisVal);
+
+        float trackX = x + 132, trackW = w - 2 * pad - 132 - 70, valX = mgn + w - pad;
+        float by = top + 64;
+        bar(canvas, x, trackX, trackW, valX, by + 0*rowH, "KNEE FLEX",  clamp01n(d.kneeAmp/90f),  d.kneeAmp > 30f,  Math.round(d.kneeAmp) + "°");
+        bar(canvas, x, trackX, trackW, valX, by + 1*rowH, "ELBOW FLEX", clamp01n(d.elbowAmp/90f), d.elbowAmp > 22f, Math.round(d.elbowAmp) + "°");
+        bar(canvas, x, trackX, trackW, valX, by + 2*rowH, "OPENNESS",   clamp01n(d.openAmp),       d.openAmp > 0.40f, fmt2(d.openAmp));
+        boolean tv = !Float.isNaN(d.torso);
+        bar(canvas, x, trackX, trackW, valX, by + 3*rowH, "TORSO LEAN", clamp01n(tv ? d.torso/90f : 0f), tv && d.torso > 42f, tv ? (Math.round(d.torso) + "°") : "—");
+        bar(canvas, x, trackX, trackW, valX, by + 4*rowH, "HIP DROP",   clamp01n(d.hipDropAmp/0.8f), d.hipDropAmp > 0.25f, fmt2(d.hipDropAmp));
+
+        // rep progress
+        float py = by + 5*rowH + 6;
+        canvas.drawText("REP", x, py + 16, mVisLabel);
+        mVisTrack.setColor(0xFF1B2330);
+        mRect.set(trackX, py + 5, trackX + trackW, py + 17);
+        canvas.drawRoundRect(mRect, 6, 6, mVisTrack);
+        float pf = clamp01n(d.progress);
+        if (pf > 0.001f) { mVisFill.setColor(ACCENT); mRect.set(trackX, py + 5, trackX + trackW * pf, py + 17); canvas.drawRoundRect(mRect, 6, 6, mVisFill); }
+        mVisVal.setColor(ACCENT);
+        String rp = d.reps + " · " + d.phase;
+        canvas.drawText(rp, valX - mVisVal.measureText(rp), py + 16, mVisVal);
+    }
+
+    private void bar(Canvas c, float labelX, float trackX, float trackW, float valX, float y,
+                     String label, float frac, boolean active, String val) {
+        c.drawText(label, labelX, y + 16, mVisLabel);
+        mVisTrack.setColor(0xFF1B2330);
+        mRect.set(trackX, y + 5, trackX + trackW, y + 17);
+        c.drawRoundRect(mRect, 6, 6, mVisTrack);
+        if (frac > 0.001f) {
+            mVisFill.setColor(active ? ACCENT : 0x66C8FF3C);
+            mRect.set(trackX, y + 5, trackX + trackW * frac, y + 17);
+            c.drawRoundRect(mRect, 6, 6, mVisFill);
+        }
+        mVisVal.setColor(active ? ACCENT : 0xFF8A97A6);
+        c.drawText(val, valX - mVisVal.measureText(val), y + 16, mVisVal);
+    }
+
+    private static float clamp01n(float v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+    private static String fmt2(float v) {
+        if (v >= 1f) return "1.0";
+        int x = Math.round(v * 100); if (x < 0) x = 0;
+        return "0." + (x < 10 ? "0" : "") + x;
     }
 
     public void setPrimaryIndex(int i) { mPrimaryIdx = i; }
@@ -253,6 +331,9 @@ public class FragmentRender extends View {
                     canvas.drawText(pb, (getWidth() - tw) / 2f, cy + 10, mPbBig);
                 }
             }
+
+            // ---- Coach Vision (optional live signal monitor) ----
+            if (SHOW_VISION && mDiag != null) drawVision(canvas);
         } finally {
             mLock.unlock();
         }

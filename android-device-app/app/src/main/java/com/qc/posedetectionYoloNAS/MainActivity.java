@@ -22,7 +22,7 @@ public class MainActivity extends AppCompatActivity {
 
     public static char runtime_var = 'D';   // default = DSP = Hexagon NPU
 
-    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3;
+    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3, M_VISION = 4;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,11 +47,19 @@ public class MainActivity extends AppCompatActivity {
         sub.add(0, M_GPU, 0, "GPU  (Adreno)");
         sub.add(0, M_CPU, 0, "CPU");
         sub.getItem().setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);  // lives in the 3-dot overflow
+        MenuItem vis = menu.add(0, M_VISION, 1, "Coach Vision");
+        vis.setCheckable(true);
+        vis.setChecked(FragmentRender.SHOW_VISION);
         return true;
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == M_VISION) {
+            FragmentRender.SHOW_VISION = !FragmentRender.SHOW_VISION;
+            item.setChecked(FragmentRender.SHOW_VISION);
+            return true;
+        }
         char r;
         switch (item.getItemId()) {
             case M_NPU: r = 'D'; break;

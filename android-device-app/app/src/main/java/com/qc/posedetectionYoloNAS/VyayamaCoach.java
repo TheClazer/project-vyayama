@@ -28,6 +28,16 @@ public class VyayamaCoach {
         public boolean exercising = false;
     }
 
+    /** Live read-out of the engine's internal signals — powers the optional Coach Vision overlay. */
+    public static class Diag {
+        public String candidate = "IDLE", locked = "NONE", phase = "TOP";
+        public int reps = 0;
+        public boolean exercising = false;
+        public float kneeAmp, elbowAmp, openAmp, hipAngAmp, hipDropAmp, torso, activity, progress;
+    }
+    private final Diag diag = new Diag();
+    public Diag diag() { return diag; }
+
     // ---- preprocessing ----
     private final KeypointFilter kpFilter = new KeypointFilter();
     private boolean filterEnabled = true;
@@ -156,6 +166,11 @@ public class VyayamaCoach {
         if (reported.equals("PLANK")) updatePlank(tsNs, s);
         else updateReps(tsNs, s);
 
+        // live diagnostics snapshot for the optional Coach Vision overlay (reused object, no alloc)
+        diag.locked = reported; diag.reps = reps; diag.exercising = exercising;
+        diag.phase = phase; diag.progress = clamp01(curP);
+        if (!exercising) diag.candidate = "IDLE";
+
         Result r = new Result();
         r.exercising = exercising;
         r.exercise = pretty(reported);
@@ -202,6 +217,9 @@ public class VyayamaCoach {
         // never lower it, so every proven-13 vector keeps its exact activity value (new amps are 0).
         float activity = Math.max(kneeAmp, Math.max(elbowAmp,
                 Math.max(openAmp * 140f, Math.max(hipAngAmp, hipDropAmp * 120f))));
+        diag.kneeAmp = kneeAmp; diag.elbowAmp = elbowAmp; diag.openAmp = openAmp;
+        diag.hipAngAmp = hipAngAmp; diag.hipDropAmp = hipDropAmp; diag.activity = activity;
+        diag.torso = mean(3);
 
         // Isometric-hold override: a PLANK has ~zero amplitude, so the amplitude gate would never
         // wake it. A sustained, still, in-plane horizontal hold (plankStillStreak, which itself
@@ -252,6 +270,7 @@ public class VyayamaCoach {
         } else {
             cand = "UNKNOWN";
         }
+        diag.candidate = cand;
 
         if (cand.equals(candidate)) candStreak++;
         else { candidate = cand; candStreak = 1; }
