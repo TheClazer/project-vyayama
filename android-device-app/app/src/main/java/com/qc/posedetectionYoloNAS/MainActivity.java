@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.SubMenu;
 import android.view.WindowManager;
 
 import org.opencv.android.OpenCVLoader;
@@ -43,7 +44,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        Menu sub = menu.addSubMenu("Engine");
+        SubMenu sub = menu.addSubMenu("Engine");
         sub.add(0, M_NPU, 0, "NPU  (Hexagon)");
         sub.add(0, M_GPU, 0, "GPU  (Adreno)");
         sub.add(0, M_CPU, 0, "CPU");
