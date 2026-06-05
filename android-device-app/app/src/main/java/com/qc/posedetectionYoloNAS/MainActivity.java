@@ -27,12 +27,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        ProfileStore.init(this);
         setContentView(R.layout.main_activity);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle("Vyāyāma");
-            getSupportActionBar().setSubtitle("AI Form Coach · " + engineName(runtime_var));
-        }
+        updateBar();
         OpenCVLoader.initDebug();
     }
 
@@ -63,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
         }
         if (r != runtime_var) {
             runtime_var = r;
-            if (getSupportActionBar() != null) getSupportActionBar().setSubtitle("AI Form Coach · " + engineName(r));
+            updateBar();
             overToCamera(r);
         }
         return true;
@@ -71,6 +69,13 @@ public class MainActivity extends AppCompatActivity {
 
     private static String engineName(char r) {
         return r == 'D' ? "NPU" : r == 'G' ? "GPU" : "CPU";
+    }
+
+    private void updateBar() {
+        if (getSupportActionBar() == null) return;
+        String prof = ProfileStore.getActive();
+        getSupportActionBar().setTitle("Vyāyāma");
+        getSupportActionBar().setSubtitle((prof.isEmpty() ? "" : prof + "  ·  ") + "Coach · " + engineName(runtime_var));
     }
 
     private void overToCamera(char runtime_value) {

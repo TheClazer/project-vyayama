@@ -17,15 +17,17 @@ public class VyayamaCoach {
 
     public static class Result {
         public String exercise = "READY";
+        public String key = "NONE";        // raw id (SQUAT/PUSHUP/...) for storage; exercise is the pretty form
         public int reps = 0;
         public String cue = "";
+        public boolean cueWarn = false;     // true = correction (coral), false = praise/live coaching (volt)
         public int formScore = -1;
         public boolean exercising = false;
     }
 
     // ---- per-frame feature window ----
     private static final int WIN = 30;
-    // sample = {kneeAvg, elbowAvg, openness, torso, kneeL, kneeR, elbowL, elbowR}
+    // sample = {kneeAvg, elbowAvg, openness, torso, kneeL, kneeR, elbowL, elbowR, hipSag}
     private final ArrayDeque<float[]> window = new ArrayDeque<>();
 
     // is-exercising + classification hysteresis (mirrors RuleExerciseClassifier)
@@ -50,6 +52,10 @@ public class VyayamaCoach {
     private String prevPhase = "TOP";
     private String lastCue = "";
     private int lastScore = -1;
+    private boolean lastCueWarn = false;
+    private long lastCueNs = 0;
+    private float curP = 0f;            // latest rep progress (0=top, 1=bottom) — drives live cues
+    private boolean displayWarn = false;
 
     public Result onFrame(float[][] kp, long tsNs) {
         float kneeL = angle(kp, L_HIP, L_KN, L_AN), kneeR = angle(kp, R_HIP, R_KN, R_AN);
@@ -57,7 +63,8 @@ public class VyayamaCoach {
         float kneeAvg = avg(kneeL, kneeR), elbowAvg = avg(elbowL, elbowR);
         float torso = torsoLean(kp);
         float open = openness(kp);
-        float[] s = {kneeAvg, elbowAvg, open, torso, kneeL, kneeR, elbowL, elbowR};
+        float sag = hipSag(kp);
+        float[] s = {kneeAvg, elbowAvg, open, torso, kneeL, kneeR, elbowL, elbowR, sag};
         if (window.size() == WIN) window.removeFirst();
         window.addLast(s);
 
@@ -67,8 +74,10 @@ public class VyayamaCoach {
         Result r = new Result();
         r.exercising = exercising;
         r.exercise = pretty(reported);
+        r.key = reported;
         r.reps = reps;
-        r.cue = lastCue;
+        r.cue = displayCue(tsNs);
+        r.cueWarn = displayWarn;
         r.formScore = lastScore;
         return r;
     }
@@ -78,6 +87,7 @@ public class VyayamaCoach {
         reported = candidate = "NONE"; candStreak = 0;
         repExercise = "NONE"; phase = "TOP"; reps = 0; maxP = 0; repStartNs = 0;
         repFrames.clear(); prevPhase = "TOP"; lastCue = ""; lastScore = -1;
+        lastCueWarn = false; lastCueNs = 0; curP = 0f; displayWarn = false;
     }
 
     // ---------------- classification ----------------
@@ -141,6 +151,7 @@ public class VyayamaCoach {
         }
         if (Float.isNaN(v)) return;                 // confidence-freeze
         float p = (v - top) / (bottom - top);
+        curP = p;
 
         boolean completed = false;
         switch (phase) {
@@ -163,38 +174,154 @@ public class VyayamaCoach {
         // accumulate the in-flight rep, analyze form on completion
         if (prevPhase.equals("TOP") && phase.equals("DESCENDING")) repFrames.clear();
         if (!phase.equals("TOP")) repFrames.add(s);
-        if (completed) { analyzeForm(ex); repFrames.clear(); }
-        else if (phase.equals("TOP")) repFrames.clear();
+        if (completed) {
+            analyzeForm(ex);
+            if (reps % 5 == 0) { lastCue = reps + " in a row!"; lastCueWarn = false; }   // milestone hype — intentionally overrides this rep's form cue
+            lastCueNs = tsNs;
+            repFrames.clear();
+        } else if (phase.equals("TOP")) repFrames.clear();
         prevPhase = phase;
     }
 
-    // ---------------- form (depth + chest-up; extend per exercise) ----------------
-    private void analyzeForm(String ex) {
-        if (repFrames.isEmpty()) { lastCue = ""; lastScore = 100; return; }
-        if (ex.equals("SQUAT") || ex.equals("LUNGE")) {
-            float minKnee = Float.MAX_VALUE, maxTorso = 0f;
-            for (float[] f : repFrames) {
-                float k = ex.equals("LUNGE") ? minv(f[4], f[5]) : f[0];
-                if (!Float.isNaN(k)) minKnee = Math.min(minKnee, k);
-                if (!Float.isNaN(f[3])) maxTorso = Math.max(maxTorso, f[3]);
-            }
-            float depth = clamp01((165f - minKnee) / 70f);
-            int score = Math.round(100f * (0.6f * depth + 0.4f * clamp01(1f - Math.max(0f, maxTorso - 30f) / 45f)));
-            if (depth < 0.85f) lastCue = "Go deeper";
-            else if (maxTorso > 50f) lastCue = "Chest up";
-            else lastCue = "Good rep!";
-            lastScore = score;
-        } else if (ex.equals("PUSHUP")) {
-            float minElbow = Float.MAX_VALUE;
-            for (float[] f : repFrames) if (!Float.isNaN(f[1])) minElbow = Math.min(minElbow, f[1]);
-            float depth = clamp01((160f - minElbow) / 65f);
-            lastScore = Math.round(100f * depth);
-            lastCue = depth < 0.8f ? "Lower your chest" : "Good rep!";
-        } else if (ex.equals("BICEP_CURL")) {
-            lastScore = 90; lastCue = "Full range";
-        } else {
-            lastScore = 90; lastCue = "Good rep!";
+    // ---------------- form + live coaching ----------------
+    /** Pick the cue to show this frame: a fresh post-rep verdict wins for ~1.4 s, else live in-rep coaching. */
+    private String displayCue(long tsNs) {
+        if (!exercising || reported.equals("NONE") || reported.equals("UNKNOWN")) { displayWarn = false; return ""; }
+        if (!lastCue.isEmpty() && (tsNs - lastCueNs) / 1_000_000L < 1400L) { displayWarn = lastCueWarn; return lastCue; }
+        displayWarn = false;
+        return liveCue();
+    }
+
+    /** Real-time, motion-aware coaching from the current rep phase + progress. */
+    private String liveCue() {
+        switch (reported) {
+            case "SQUAT": case "LUNGE": case "PUSHUP":
+                switch (phase) {
+                    case "DESCENDING": return curP < 0.6f ? "Lower…" : "Almost — deeper";
+                    case "BOTTOM":     return "Now drive up!";
+                    case "ASCENDING":  return "Push!";
+                    default:           return "";
+                }
+            case "BICEP_CURL":
+                switch (phase) {
+                    case "DESCENDING": return "Curl up…";
+                    case "BOTTOM":     return "Squeeze!";
+                    case "ASCENDING":  return "Lower slow";
+                    default:           return "";
+                }
+            case "JUMPING_JACK":
+                switch (phase) {
+                    case "DESCENDING": return "Open wide!";
+                    case "ASCENDING":  return "And in";
+                    default:           return "";
+                }
+            default: return "";
         }
+    }
+
+    /** Per-rep biomechanics → 0..100 score + one actionable cue (highest-severity issue wins). */
+    private void analyzeForm(String ex) {
+        int frames = repFrames.size();
+        if (frames == 0) { lastCue = "Clean rep!"; lastCueWarn = false; lastScore = 100; return; }
+        float tempo = tempoScore(frames);
+        String cue = "Clean rep!"; boolean warn = false; int sev = 0; float score = 90f;
+
+        switch (ex) {
+            case "SQUAT": {
+                float depth = clamp01((165f - repMin(0)) / 70f);
+                float sym = repMeanAbsDiff(4, 5);
+                float maxTorso = repMax(3);
+                float upright = clamp01(1f - Math.max(0f, maxTorso - 30f) / 45f);
+                score = 100f * (0.45f * depth + 0.20f * clamp01(1f - sym / 40f) + 0.20f * upright + 0.15f * tempo);
+                cue = "Strong squat!";
+                if (depth < 0.75f && sev < 9)  { cue = "Go deeper — hips below knees"; warn = true; sev = 9; }
+                if (sym > 22f && sev < 6)      { cue = "Even out your weight"; warn = true; sev = 6; }
+                if (maxTorso > 50f && sev < 5) { cue = "Chest up — back straight"; warn = true; sev = 5; }
+                break;
+            }
+            case "LUNGE": {
+                float depth = clamp01((165f - repMinPair(4, 5)) / 70f);
+                float maxTorso = repMax(3);
+                float upright = clamp01(1f - Math.max(0f, maxTorso - 25f) / 45f);
+                score = 100f * (0.5f * depth + 0.3f * upright + 0.2f * tempo);
+                cue = "Nice lunge!";
+                if (depth < 0.7f && sev < 8)   { cue = "Drop the back knee lower"; warn = true; sev = 8; }
+                if (maxTorso > 45f && sev < 6) { cue = "Stay upright"; warn = true; sev = 6; }
+                break;
+            }
+            case "PUSHUP": {
+                float depth = clamp01((160f - repMin(1)) / 65f);
+                float sagScore = clamp01(1f - repMax(8) / 0.22f);
+                float sym = repMeanAbsDiff(6, 7);
+                score = 100f * (0.35f * depth + 0.35f * sagScore + 0.15f * clamp01(1f - sym / 40f) + 0.15f * tempo);
+                cue = "Solid push-up!";
+                if (depth < 0.75f && sev < 8)   { cue = "Lower your chest further"; warn = true; sev = 8; }
+                if (sagScore < 0.6f && sev < 9) { cue = "Hips in line — no sag"; warn = true; sev = 9; }
+                if (sym > 22f && sev < 5)       { cue = "Press evenly both arms"; warn = true; sev = 5; }
+                break;
+            }
+            case "BICEP_CURL": {
+                float rom = clamp01(Math.max(repRange(6), repRange(7)) / 100f);
+                float driftScore = clamp01(1f - repVar(3) / 400f);
+                score = 100f * (0.45f * rom + 0.4f * driftScore + 0.15f * tempo);
+                cue = "Full range!";
+                if (rom < 0.7f && sev < 7)        { cue = "Extend and squeeze"; warn = true; sev = 7; }
+                if (driftScore < 0.7f && sev < 9) { cue = "Stop swinging — isolate it"; warn = true; sev = 9; }
+                break;
+            }
+            case "JUMPING_JACK": {
+                float ext = clamp01(repMax(2) / 0.9f);
+                score = 100f * (0.7f * ext + 0.3f * tempo);
+                cue = "Great pace!";
+                if (ext < 0.7f && sev < 7) { cue = "Bigger — arms up, feet wide"; warn = true; sev = 7; }
+                break;
+            }
+            default: break;
+        }
+        lastCue = cue; lastCueWarn = warn; lastScore = Math.round(clamp01(score / 100f) * 100f);
+    }
+
+    private static float tempoScore(int frames) {
+        if (frames < 12) return 0.4f;
+        if (frames <= 18) return 0.75f;
+        if (frames <= 70) return 1f;
+        if (frames <= 100) return 0.8f;
+        return 0.6f;
+    }
+
+    // ---------------- per-rep window helpers ----------------
+    private float repMin(int col) {
+        float m = Float.MAX_VALUE; boolean any = false;
+        for (float[] f : repFrames) { float v = f[col]; if (!Float.isNaN(v)) { m = Math.min(m, v); any = true; } }
+        return any ? m : Float.NaN;
+    }
+    private float repMax(int col) {
+        float m = -Float.MAX_VALUE; boolean any = false;
+        for (float[] f : repFrames) { float v = f[col]; if (!Float.isNaN(v)) { m = Math.max(m, v); any = true; } }
+        return any ? m : 0f;
+    }
+    private float repRange(int col) {
+        float lo = Float.MAX_VALUE, hi = -Float.MAX_VALUE; boolean any = false;
+        for (float[] f : repFrames) { float v = f[col]; if (!Float.isNaN(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); any = true; } }
+        return any ? hi - lo : 0f;
+    }
+    private float repVar(int col) {
+        float sum = 0; int n = 0;
+        for (float[] f : repFrames) { float v = f[col]; if (!Float.isNaN(v)) { sum += v; n++; } }
+        if (n < 2) return 0f;
+        float mean = sum / n, acc = 0;
+        for (float[] f : repFrames) { float v = f[col]; if (!Float.isNaN(v)) acc += (v - mean) * (v - mean); }
+        return acc / n;
+    }
+    private float repMinPair(int a, int b) {
+        float m = Float.MAX_VALUE; boolean any = false;
+        for (float[] f : repFrames) { float v = minv(f[a], f[b]); if (!Float.isNaN(v)) { m = Math.min(m, v); any = true; } }
+        return any ? m : Float.NaN;
+    }
+    private float repMeanAbsDiff(int a, int b) {
+        float sum = 0; int n = 0;
+        for (float[] f : repFrames) { if (!Float.isNaN(f[a]) && !Float.isNaN(f[b])) { sum += Math.abs(f[a] - f[b]); n++; } }
+        return n > 0 ? sum / n : 0f;
     }
 
     // ---------------- window helpers ----------------
@@ -261,6 +388,20 @@ public class VyayamaCoach {
             leg = clamp01(aSpread / shW - 1f);
         }
         return 0.5f * arm + 0.5f * leg;
+    }
+
+    /** Hip-line sag/pike for push-ups: normalized perpendicular distance from the hips to the
+     *  shoulder→ankle line (0 = perfectly in line). NaN unless shoulders/hips/ankles are all visible. */
+    private static float hipSag(float[][] kp) {
+        if (missing(kp, L_SH) || missing(kp, R_SH) || missing(kp, L_HIP) || missing(kp, R_HIP)
+                || missing(kp, L_AN) || missing(kp, R_AN)) return Float.NaN;
+        float sx = (kp[L_SH][0] + kp[R_SH][0]) / 2f, sy = (kp[L_SH][1] + kp[R_SH][1]) / 2f;
+        float hx = (kp[L_HIP][0] + kp[R_HIP][0]) / 2f, hy = (kp[L_HIP][1] + kp[R_HIP][1]) / 2f;
+        float ax = (kp[L_AN][0] + kp[R_AN][0]) / 2f, ay = (kp[L_AN][1] + kp[R_AN][1]) / 2f;
+        float len = (float) Math.hypot(ax - sx, ay - sy);
+        if (len < 1e-3f) return Float.NaN;
+        float cross = Math.abs((ax - sx) * (hy - sy) - (ay - sy) * (hx - sx));
+        return (cross / len) / len;     // distance ÷ body length → dimensionless sag ratio
     }
 
     private static float avg(float a, float b) {

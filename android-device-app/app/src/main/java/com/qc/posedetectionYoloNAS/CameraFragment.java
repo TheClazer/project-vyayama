@@ -248,6 +248,10 @@ public class CameraFragment extends Fragment
      */
     private File mFile;
 
+    // per-session rep tracking for the active profile (personal bests / totals / streak)
+    private int mPrevReps = 0;
+    private String mPrevExKey = "NONE";
+
     /**
      * This a callback object for the {@link ImageReader}. "onImageAvailable" will be called when a
      * still image is ready to be saved.
@@ -1007,6 +1011,25 @@ public class CameraFragment extends Fragment
 
     }
 
+    /** Feed counted reps into the active offline profile: lifetime total, streak, and personal best. */
+    private void trackProgress(VyayamaCoach.Result r) {
+        if (!r.exercising) return;
+        String ex = r.key;
+        if (ex == null || ex.equals("NONE") || ex.equals("UNKNOWN")) return;
+        String prof = ProfileStore.getActive();
+        if (prof.isEmpty()) return;
+        if (!ex.equals(mPrevExKey)) { mPrevExKey = ex; mPrevReps = 0; }   // new exercise -> fresh count
+        if (r.reps > mPrevReps) {
+            int delta = r.reps - mPrevReps;
+            mPrevReps = r.reps;
+            ProfileStore.bumpStreak(prof);
+            ProfileStore.addReps(prof, ex, delta);
+            if (ProfileStore.maybeUpdatePB(prof, ex, r.reps)) {
+                mFragmentRender.showNewPB(ProfileStore.pretty(ex), r.reps);
+            }
+        }
+    }
+
     private class CameraSession extends android.hardware.camera2.CameraCaptureSession.CaptureCallback {
 
         @Override
@@ -1054,10 +1077,11 @@ public class CameraFragment extends Fragment
                         float[][] up = rotateKeypoints(coordslist.get(primary),
                                 mBitmap.getWidth(), mBitmap.getHeight(), mFragmentRender.getRotationDeg());
                         VyayamaCoach.Result r = mCoach.onFrame(up, System.nanoTime());
-                        mFragmentRender.setCoach(r.exercise, r.reps, r.cue, r.formScore, r.exercising, fps);
+                        mFragmentRender.setCoach(r.exercise, r.reps, r.cue, r.cueWarn, r.formScore, r.exercising, fps);
+                        trackProgress(r);
                     }
                 } else {
-                    mFragmentRender.setCoach("READY", 0, "", -1, false, fps);
+                    mFragmentRender.setCoach("READY", 0, "", false, -1, false, fps);
                 }
                 mFragmentRender.setPrimaryIndex(primary);
                 mFragmentRender.setCoordsList(coordslist, BBlist);
