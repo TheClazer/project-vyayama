@@ -60,6 +60,7 @@ public final class CoachHarness {
         case28_glitchRobustness();
         case29_moderateSquat();
         case30_foreshortenedSquat();
+        case31_pushupReps();
 
         System.out.println("==========================================");
         System.out.println("PASSED " + passed + " / " + total + (skipped > 0 ? ("  (SKIPPED " + skipped + ")") : ""));
@@ -548,6 +549,21 @@ public final class CoachHarness {
             }
         expectKey ("foreshortened squat -> SQUAT (hip-drop)", key, "SQUAT");
         expectAtLeast("foreshortened squat counts (>=4)", reps, 4);
+    }
+
+    // ================= 31: half-depth push-up counts =================
+    static void case31_pushupReps() {
+        // elbow only bends to ~110 (a half push-up, not locked deep). Must recognize + count.
+        VyayamaCoach c = mk(true);
+        int reps = 0; String key = "NONE";
+        for (int rep = 0; rep < 6; rep++)
+            for (int f = 0; f < 40; f++) {
+                float elbow = 130f + 30f*(float)Math.cos(2*Math.PI*f/40);   // 100..160 (half push-up)
+                VyayamaCoach.Result r = c.onFrame(pushupPose(elbow), tNs());
+                reps = r.reps; key = r.key;
+            }
+        expectKey ("half push-up -> PUSHUP", key, "PUSHUP");
+        expectAtLeast("half push-up counts (>=4)", reps, 4);
     }
 
     /** A front-on squat whose knee ANGLE stays ~straight (foreshortened) while the HIPS drop.

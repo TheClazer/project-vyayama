@@ -110,9 +110,9 @@ public class VyayamaCoach {
     static final float CURL_HIP_AMP_MAX   = 18f;   // no trunk fold → this is what excludes sit-ups
     static final float CURL_FLEX_MIN      = 80f;   // active elbow must reach a genuinely flexed angle
     // ---- squat: viewpoint-stable hip-drop (fires when a front-on knee angle foreshortens flat) ----
-    static final float HIP_DROP_AMP_MIN = 0.30f;   // hip-drop swing (torso-lengths) that signals a squat
+    static final float HIP_DROP_AMP_MIN = 0.25f;   // hip-drop swing (torso-lengths) that signals a squat
     static final float SQUAT_HIP_TOP    = -0.85f;  // standing (hips well above the knees)
-    static final float SQUAT_HIP_BOTTOM = -0.15f;  // ~parallel (hips near the knee line)
+    static final float SQUAT_HIP_BOTTOM = -0.25f;  // counts a ~3/4-depth squat by hip drop (was -0.15)
 
     // ---- PLANK (optional isometric) ----
     static final float PLANK_TORSO_MIN   = 60f;
@@ -233,8 +233,8 @@ public class VyayamaCoach {
                 && hipAngAmp > SITUP_HIP_AMP && torsoAmp > SITUP_TORSO_AMP
                 && kneeAmp < SITUP_KNEE_AMP_MAX && elbowAmp < 40f) {
             cand = "SITUP";
-        } else if (torsoVal && avgTorso > 50f && elbowAmp > 25f && hipAngAmp < SITUP_HIP_AMP) {
-            cand = "PUSHUP";
+        } else if (torsoVal && avgTorso > 42f && elbowAmp > 22f && hipAngAmp < SITUP_HIP_AMP) {
+            cand = "PUSHUP";   // looser torso/elbow so an angled or half push-up still recognizes
         } else if (!Float.isNaN(wristUp) && wristUp > WRIST_UP_PRESS && elbowAmp > ELBOW_PRESS_AMP
                 && torsoVal && avgTorso < PRESS_TORSO_MAX && kneeAmp < PRESS_KNEE_AMP_MAX && openAmp <= 0.40f) {
             cand = "SHOULDER_PRESS";
@@ -404,7 +404,7 @@ public class VyayamaCoach {
     private void loadDefaults(String ex) {
         switch (ex) {
             case "SQUAT":          defTop = 165; defBottom = 115; break;   // half-squat counts (was 95 = near-parallel)
-            case "PUSHUP":         defTop = 160; defBottom = 95;  break;
+            case "PUSHUP":         defTop = 160; defBottom = 112; break;   // half push-up counts (was 95 = deep)
             case "BICEP_CURL":     defTop = 155; defBottom = 50;  break;
             case "JUMPING_JACK":   defTop = 0.15f; defBottom = 0.85f; break;
             case "SHOULDER_PRESS": defTop = 95;  defBottom = 165; break;   // inverted: bent rest → lockout
