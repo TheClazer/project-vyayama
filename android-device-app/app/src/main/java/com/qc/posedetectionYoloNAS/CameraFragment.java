@@ -1020,6 +1020,7 @@ public class CameraFragment extends Fragment
         String prof = ProfileStore.getActive();
         if (prof.isEmpty()) return;
         if (!ex.equals(mPrevExKey)) { mPrevExKey = ex; mPrevReps = 0; }   // new exercise -> fresh count
+        if (r.reps < mPrevReps) mPrevReps = 0;   // engine reps dropped (mode change / re-lock of same key) -> new bout
         if (r.reps > mPrevReps) {
             int delta = r.reps - mPrevReps;
             mPrevReps = r.reps;
@@ -1079,6 +1080,9 @@ public class CameraFragment extends Fragment
                     if (primary >= 0 && primary < coordslist.size()) {
                         float[][] up = rotateKeypoints(coordslist.get(primary),
                                 mBitmap.getWidth(), mBitmap.getHeight(), mFragmentRender.getRotationDeg());
+                        // Re-assert the manual-mode pin every frame (no-op when unchanged → zero alloc).
+                        // This is how a freshly-recreated coach picks up the pin that survives in the static.
+                        mCoach.setManualExercise(MainActivity.MANUAL_EXERCISE);
                         VyayamaCoach.Result r = mCoach.onFrame(up, System.nanoTime());
                         mFragmentRender.setCoach(r.exercise, r.reps, r.cue, r.cueWarn, r.formScore, r.exercising, fps);
                         trackProgress(r);

@@ -65,6 +65,8 @@ public class FragmentRender extends View {
 
     // Coach Vision — live signal monitor (toggled from the 3-dot menu, OFF by default)
     public static volatile boolean SHOW_VISION = false;
+    // Manual-mode HUD tag — set by MainActivity when an exercise is pinned. Drawn as a small volt chip.
+    public static volatile boolean MANUAL_PINNED = false;
     private volatile VyayamaCoach.Diag mDiag;
     private final Paint mVisTitle = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mVisLabel = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -274,7 +276,15 @@ public class FragmentRender extends View {
 
             float pad = 26f, panelL = 16, panelTop = 22, panelH = 250;
             float exW = mExerciseP.measureText(ex);
-            float panelW = Math.max(exW + 2 * pad + 8, 396);
+
+            // Measure the header pieces FIRST, then widen the panel so the title + (optional MANUAL
+            // chip) + engine pill always fit on the header row without overlapping — for any name.
+            String badge = engine + " · " + mFps + " FPS";
+            float bw = mBadgeText.measureText(badge) + 28;
+            float manualW = MANUAL_PINNED ? (mBadgeText.measureText("MANUAL") + 24) : 0f;
+            float titleW = mTitle.measureText("VYĀYĀMA");
+            float headerNeed = pad + titleW + 22 + (MANUAL_PINNED ? manualW + 12 : 0) + bw + pad;
+            float panelW = Math.max(Math.max(exW + 2 * pad + 8, 396f), headerNeed);
             mPanelRect.set(panelL, panelTop, panelL + panelW, panelTop + panelH);
             canvas.drawRoundRect(mPanelRect, 26, 26, mPanel);
             // volt accent stripe down the left edge
@@ -285,11 +295,17 @@ public class FragmentRender extends View {
             canvas.drawText("VYĀYĀMA", x, panelTop + 42, mTitle);
 
             // engine + fps badge, right-aligned in the panel header
-            String badge = engine + " · " + mFps + " FPS";
-            float bw = mBadgeText.measureText(badge) + 28;
             mRect.set(mPanelRect.right - pad - bw, panelTop + 22, mPanelRect.right - pad, panelTop + 52);
             canvas.drawRoundRect(mRect, 15, 15, mPill);
             canvas.drawText(badge, mRect.left + 14, mRect.bottom - 9, mBadgeText);
+
+            // manual-mode chip — left of the engine pill; panel was widened so it never overlaps the title
+            if (MANUAL_PINNED) {
+                float right = mRect.left - 12;       // 12px gap left of the engine pill
+                mRect.set(right - manualW, panelTop + 22, right, panelTop + 52);
+                canvas.drawRoundRect(mRect, 15, 15, mPill);
+                canvas.drawText("MANUAL", mRect.left + 12, mRect.bottom - 9, mBadgeText);
+            }
 
             // exercise name
             canvas.drawText(ex, x, panelTop + 134, mExerciseP);

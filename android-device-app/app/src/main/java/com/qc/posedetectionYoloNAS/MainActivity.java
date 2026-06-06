@@ -24,8 +24,12 @@ public class MainActivity extends AppCompatActivity {
     static { System.loadLibrary("posedetectionYoloNAS"); }
 
     public static char runtime_var = 'D';   // default = DSP = Hexagon NPU
+    // Manual mode pin (null = automatic recognition). Static + volatile so it survives the
+    // per-onResume fragment/coach rebuild (mirrors runtime_var / FragmentRender.SHOW_VISION).
+    // Written on the UI thread (mode dialog), read on the camera thread (CameraFragment).
+    public static volatile String MANUAL_EXERCISE = null;
 
-    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3, M_VISION = 4, M_PROFILE = 5;
+    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3, M_VISION = 4, M_PROFILE = 5, M_MODE = 6;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,6 +58,9 @@ public class MainActivity extends AppCompatActivity {
         MenuItem vis = menu.add(0, M_VISION, 1, "Coach Vision");
         vis.setCheckable(true);
         vis.setChecked(FragmentRender.SHOW_VISION);
+        // manual mode — pick one exercise (or Automatic). Title reflects the current pin.
+        MenuItem mode = menu.add(0, M_MODE, 2, modeTitle());
+        mode.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);   // lives in the 3-dot overflow
         // profile/stats — the only action button (shows as a volt icon left of the overflow)
         MenuItem prof = menu.add(0, M_PROFILE, 0, "Profile");
         prof.setIcon(R.drawable.ic_profile);
@@ -70,6 +77,15 @@ public class MainActivity extends AppCompatActivity {
         if (item.getItemId() == M_VISION) {
             FragmentRender.SHOW_VISION = !FragmentRender.SHOW_VISION;
             item.setChecked(FragmentRender.SHOW_VISION);
+            return true;
+        }
+        if (item.getItemId() == M_MODE) {
+            ModePickerDialog.show(this, MANUAL_EXERCISE, key -> {
+                MANUAL_EXERCISE = key;                                    // null = auto, else raw key
+                FragmentRender.MANUAL_PINNED = (MANUAL_EXERCISE != null); // subtle HUD tag
+                updateBar();                                             // refresh subtitle
+                invalidateOptionsMenu();                                 // refresh "Mode: X" title
+            });
             return true;
         }
         char r;
@@ -94,8 +110,14 @@ public class MainActivity extends AppCompatActivity {
     private void updateBar() {
         if (getSupportActionBar() == null) return;
         String prof = ProfileStore.getActive();
+        String coach = (MANUAL_EXERCISE == null) ? "Coach" : "Manual · " + ProfileStore.pretty(MANUAL_EXERCISE);
         getSupportActionBar().setTitle("Vyāyāma");
-        getSupportActionBar().setSubtitle((prof.isEmpty() ? "" : prof + "  ·  ") + "Coach · " + engineName(runtime_var));
+        getSupportActionBar().setSubtitle((prof.isEmpty() ? "" : prof + "  ·  ") + coach + " · " + engineName(runtime_var));
+    }
+
+    /** Overflow item title reflecting the current mode pin. */
+    private static String modeTitle() {
+        return MANUAL_EXERCISE == null ? "Mode: Automatic" : "Mode: " + ProfileStore.pretty(MANUAL_EXERCISE);
     }
 
     /** Streak + today's best chip above the preview. Called on resume + on each new rep (not per frame). */

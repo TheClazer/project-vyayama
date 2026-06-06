@@ -41,6 +41,10 @@ public class VyayamaCoach {
     // ---- preprocessing ----
     private final KeypointFilter kpFilter = new KeypointFilter();
     private boolean filterEnabled = true;
+    // Manual mode: when non-null the engine is PINNED to this exercise key and the entire
+    // recognition path is bypassed (no other exercise is ever considered → cannot misdetect).
+    // null = automatic. Config-like (survives reset(), like filterEnabled).
+    private String manualExercise = null;
 
     // ---- per-frame feature window (zero-alloc ring; replaces ArrayDeque) ----
     private static final int WIN = 30;
@@ -202,12 +206,61 @@ public class VyayamaCoach {
     /** Test-only A/B switch for the One-Euro preprocessing pass (default ON). */
     public void setFilterEnabled(boolean on) { filterEnabled = on; }
 
+    public boolean isManual() { return manualExercise != null; }
+    public String  manualKey() { return manualExercise; }
+    private static boolean eq(String a, String b) { return a == null ? b == null : a.equals(b); }
+
+    /**
+     * Pin the engine to ONE exercise (raw key, e.g. "SQUAT"), or pass null/""/"NONE" for automatic
+     * recognition. While pinned, classify() is bypassed entirely — no other exercise can be
+     * considered or override the pin, so it can never be misdetected. Cheap no-op when the key is
+     * unchanged (that early return is what lets CameraFragment re-assert it every frame with zero
+     * allocation and without clobbering an in-progress bout). Call only on the camera thread — it
+     * mutates the rep-FSM state owned by that thread.
+     */
+    public void setManualExercise(String key) {
+        String k = (key == null) ? null : key.trim();
+        if (k != null && (k.isEmpty() || k.equals("NONE"))) k = null;   // ""/"NONE"/null → auto
+        if (eq(k, manualExercise)) return;                             // unchanged → no-op
+        manualExercise = k;
+        // always clear recognition/lock hysteresis so the mode change takes the next frame:
+        exercising = false; activeStreak = 0; idleStreak = 0;
+        reported = "NONE"; candidate = "NONE"; candStreak = 0;
+        // continue-same-bout vs reset — keyed on repExercise (the FSM's own exercise), NOT reported:
+        if (k == null || !k.equals(repExercise)) {
+            // switching to auto, OR pinning a DIFFERENT exercise than the one being counted → hard reset.
+            repExercise = "NONE"; phase = "TOP"; reps = 0; maxP = 0; repStartNs = 0;
+            repCount = 0; prevPhase = "TOP"; curP = 0f; lastPartial = false;
+            calArmed = calLocked = false; calRepsSeen = 0; calObsTop = calObsBottom = Float.NaN;
+            plankPrevAccumMs = plankAccumMs = plankHoldStartNs = 0;
+            plankActive = false; plankStillStreak = 0; plankShownSec = -1; plankCueCache = "";
+        }
+        // else: pinning the SAME exercise already being counted → KEEP reps/phase/calibration
+        //       (the user just confirmed a correct auto-guess; don't drop their count).
+        // NOTE: never kpFilter.reset() — keep the One-Euro filter warm across the switch.
+    }
+
     /** Number of partial reps flagged since reset (a "real attempt" that didn't reach bottom). */
     public int partialCount() { return partialTotal; }
 
     // ============================== classification ==============================
 
     private void classify() {
+        // Manual mode: pin reported to the chosen exercise and skip the ENTIRE recognition path
+        // (7-way ladder + active/idle gate + ACQUIRE/SWITCH lock). Placed before the ringCount<10
+        // guard so a fresh pin reports immediately (no READY/NONE flicker on the first frames).
+        if (manualExercise != null) {
+            exercising = true; reported = manualExercise; candidate = manualExercise;
+            if (ringCount >= 10) {
+                diag.kneeAmp = amp(0); diag.elbowAmp = amp(1); diag.openAmp = amp(2);
+                diag.hipAngAmp = amp(10); diag.hipDropAmp = amp(11);
+                diag.activity = Math.max(diag.kneeAmp, Math.max(diag.elbowAmp,
+                        Math.max(diag.openAmp * 140f, Math.max(diag.hipAngAmp, diag.hipDropAmp * 120f))));
+                diag.torso = mean(3);
+            }
+            diag.candidate = manualExercise;
+            return;
+        }
         if (ringCount < 10) { reported = "NONE"; return; }
         float kneeAmp = amp(0), elbowAmp = amp(1), openAmp = amp(2);
         // new-move motion signals (NaN→0 for the proven vectors, so the gate is unchanged there).
@@ -251,8 +304,8 @@ public class VyayamaCoach {
                 && hipAngAmp > SITUP_HIP_AMP && torsoAmp > SITUP_TORSO_AMP
                 && kneeAmp < SITUP_KNEE_AMP_MAX && elbowAmp < 40f) {
             cand = "SITUP";
-        } else if (torsoVal && avgTorso > 42f && elbowAmp > 22f && hipAngAmp < SITUP_HIP_AMP) {
-            cand = "PUSHUP";   // looser torso/elbow so an angled or half push-up still recognizes
+        } else if (torsoVal && avgTorso > 38f && elbowAmp > 16f && hipAngAmp < SITUP_HIP_AMP) {
+            cand = "PUSHUP";   // lenient torso/elbow so an angled, shallow or half push-up still recognizes
         } else if (!Float.isNaN(wristUp) && wristUp > WRIST_UP_PRESS && elbowAmp > ELBOW_PRESS_AMP
                 && torsoVal && avgTorso < PRESS_TORSO_MAX && kneeAmp < PRESS_KNEE_AMP_MAX && openAmp <= 0.40f) {
             cand = "SHOULDER_PRESS";
@@ -344,33 +397,42 @@ public class VyayamaCoach {
 
         boolean completed = false;
         boolean calCycle = false;   // a meaningful attempt that returned to TOP without bottoming
-        switch (phase) {
-            case "TOP":
-                if (p > TOP_ENTER) { phase = "DESCENDING"; repStartNs = tsNs; maxP = p; }
-                break;
-            case "DESCENDING":
-                maxP = Math.max(maxP, p);
-                if (p >= BOTTOM_ENTER) phase = "BOTTOM";
-                else if (p <= TOP_ENTER) {
-                    if (maxP >= PARTIAL_MIN) { lastPartial = true; calCycle = true; partialTotal++; }
-                    phase = "TOP";
-                }
-                break;
-            case "BOTTOM":
-                maxP = Math.max(maxP, p);
-                if (p < BOTTOM_ENTER) phase = "ASCENDING";
-                break;
-            case "ASCENDING":
-                if (p >= BOTTOM_ENTER) phase = "BOTTOM";
-                else if (p <= TOP_ENTER) {
-                    if ((tsNs - repStartNs) / 1_000_000L >= MIN_REP_MS) { reps++; completed = true; }
-                    phase = "TOP";
-                }
-                break;
+        // Allow MORE THAN ONE phase transition per frame so a FAST rep — or any rep at a low device
+        // frame-rate, where a whole down/up spans only 2-3 frames — still walks every phase instead of
+        // being dropped. Each transition fires only when THIS frame's p genuinely crosses the threshold,
+        // and a completed rep is still gated by MIN_REP_MS, so this can neither fabricate nor double-count
+        // reps (a sub-300ms jitter excursion is still rejected). Bounded to one full cycle (4 steps).
+        for (int step = 0; step < 4; step++) {
+            String before = phase;
+            switch (phase) {
+                case "TOP":
+                    if (p > TOP_ENTER) { phase = "DESCENDING"; repStartNs = tsNs; maxP = p; }
+                    break;
+                case "DESCENDING":
+                    maxP = Math.max(maxP, p);
+                    if (p >= BOTTOM_ENTER) phase = "BOTTOM";
+                    else if (p <= TOP_ENTER) {
+                        if (maxP >= PARTIAL_MIN) { lastPartial = true; calCycle = true; partialTotal++; }
+                        phase = "TOP";
+                    }
+                    break;
+                case "BOTTOM":
+                    maxP = Math.max(maxP, p);
+                    if (p < BOTTOM_ENTER) phase = "ASCENDING";
+                    break;
+                case "ASCENDING":
+                    if (p >= BOTTOM_ENTER) phase = "BOTTOM";
+                    else if (p <= TOP_ENTER) {
+                        if ((tsNs - repStartNs) / 1_000_000L >= MIN_REP_MS) { reps++; completed = true; }
+                        phase = "TOP";
+                    }
+                    break;
+            }
+            if (phase.equals(before) || completed) break;   // stable, or finished a rep this frame
         }
 
         // accumulate the in-flight rep, analyze form on completion
-        if (prevPhase.equals("TOP") && phase.equals("DESCENDING")) repCount = 0;
+        if (prevPhase.equals("TOP") && !phase.equals("TOP")) repCount = 0;   // reset on leaving TOP (incl. fast TOP→BOTTOM)
         if (!phase.equals("TOP")) {
             if (repCount < REP_CAP) { System.arraycopy(s, 0, repRing[repCount], 0, SAMPLE_LEN); repCount++; }
         }
@@ -423,7 +485,7 @@ public class VyayamaCoach {
     private void loadDefaults(String ex) {
         switch (ex) {
             case "SQUAT":          defTop = 165; defBottom = 115; break;   // half-squat counts (was 95 = near-parallel)
-            case "PUSHUP":         defTop = 160; defBottom = 112; break;   // half push-up counts (was 95 = deep)
+            case "PUSHUP":         defTop = 160; defBottom = 128; break;   // lenient bottom: a shallow/foreshortened push-up (reads ~130°) crosses bottom or at least partials → calibration then narrows to the user
             case "BICEP_CURL":     defTop = 155; defBottom = 50;  break;
             case "JUMPING_JACK":   defTop = 0.15f; defBottom = 0.85f; break;
             case "SHOULDER_PRESS": defTop = 95;  defBottom = 165; break;   // inverted: bent rest → lockout

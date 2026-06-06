@@ -62,6 +62,26 @@ public final class CoachHarness {
         case30_foreshortenedSquat();
         case31_pushupReps();
 
+        // ---- manual mode 32-44 ----
+        case32_manualSquatCounts();
+        case33_pinnedSquatNeverFlips();
+        case34_pinnedSitupSuppressesCurl();
+        case35_manualToAutoRestores();
+        case36_manualPlankCounts();
+        case37_manualIdleNoFalseReps();
+        case38_continueSameBoutRetains();
+        case39_crossPinResetsFsm();
+        case40_manualSurvivesReset();
+        case41_manualNullIsAuto();
+        case42_manualMismatchNoCount();
+        case43_manualPlankToRepExercise();
+        case44_manualPinsChosenOnly();
+
+        // ---- push-up leniency + fast-rep robustness 45-47 ----
+        case45_shallowPushupCounts();
+        case46_fastPushupLowFps();
+        case47_tooFastPushupRejected();
+
         System.out.println("==========================================");
         System.out.println("PASSED " + passed + " / " + total + (skipped > 0 ? ("  (SKIPPED " + skipped + ")") : ""));
         if (passed != total) System.exit(1);
@@ -564,6 +584,232 @@ public final class CoachHarness {
             }
         expectKey ("half push-up -> PUSHUP", key, "PUSHUP");
         expectAtLeast("half push-up counts (>=4)", reps, 4);
+    }
+
+    // ================= MANUAL MODE 32-44 =================
+    // Manual mode pins one exercise; classify() is bypassed so no other exercise is ever considered.
+
+    /** 32: pinned SQUAT counts a clean squat sweep exactly like auto. */
+    static void case32_manualSquatCounts() {
+        VyayamaCoach c = mk(true); c.setManualExercise("SQUAT");
+        int reps = 0; String key = "NONE";
+        for (int rep = 0; rep < 5; rep++)
+            for (int f = 0; f < 45; f++) {
+                VyayamaCoach.Result r = c.onFrame(squatPose(130f + 40f*(float)Math.cos(2*Math.PI*f/45)), tNs());
+                reps = r.reps; key = r.key;
+            }
+        expectReps("manual SQUAT counts 5", reps, 5);
+        expectKey ("manual SQUAT key", key, "SQUAT");
+    }
+
+    /** 33: pinned SQUAT never flips to another exercise under curl motion. */
+    static void case33_pinnedSquatNeverFlips() {
+        VyayamaCoach c = mk(true); c.setManualExercise("SQUAT");
+        String key = "NONE"; boolean everOther = false;
+        for (int rep = 0; rep < 4; rep++)
+            for (int f = 0; f < 40; f++) {
+                VyayamaCoach.Result r = c.onFrame(curlPose(100f - 50f*(float)Math.cos(2*Math.PI*f/40)), tNs());
+                key = r.key; if (!key.equals("SQUAT")) everOther = true;
+            }
+        expectKey ("pinned SQUAT stays SQUAT under curl motion", key, "SQUAT");
+        expectBool("pinned key never flips to another exercise", everOther, false);
+    }
+
+    /** 34: THE bug — an arm-swing sit-up is suppressed from being grabbed as a curl when pinned SITUP. */
+    static void case34_pinnedSitupSuppressesCurl() {
+        VyayamaCoach c = mk(true); c.setManualExercise("SITUP");
+        String key = "NONE"; boolean everCurl = false; int reps = 0;
+        for (int rep = 0; rep < 5; rep++)
+            for (int f = 0; f < 40; f++) {
+                float phase = (float)(2*Math.PI*f/40);
+                float hipFlex = 110f + 40f*(float)Math.cos(phase);
+                float armSwing = 0.5f - 0.5f*(float)Math.cos(phase);
+                VyayamaCoach.Result r = c.onFrame(situpArmPose(hipFlex, armSwing), tNs());
+                key = r.key; reps = r.reps; if (r.key.equals("BICEP_CURL")) everCurl = true;
+            }
+        expectKey ("pinned SITUP stays SITUP (arm-swing sit-up)", key, "SITUP");
+        expectBool("sit-up-as-curl suppressed when pinned", everCurl, false);
+        expectAtLeast("pinned situp still counts (>=3)", reps, 3);
+    }
+
+    /** 35: clearing manual restores automatic recognition. */
+    static void case35_manualToAutoRestores() {
+        VyayamaCoach c = mk(true); c.setManualExercise("SQUAT");
+        for (int f = 0; f < 20; f++) c.onFrame(squatPose(150f), tNs());
+        c.setManualExercise(null);
+        String key = "NONE"; int reps = 0;
+        for (int rep = 0; rep < 4; rep++)
+            for (int f = 0; f < 40; f++) {
+                VyayamaCoach.Result r = c.onFrame(curlPose(100f - 50f*(float)Math.cos(2*Math.PI*f/40)), tNs());
+                key = r.key; reps = r.reps;
+            }
+        expectKey ("manual->auto re-locks BICEP_CURL", key, "BICEP_CURL");
+        expectAtLeast("manual->auto counts new exercise (>=3)", reps, 3);
+    }
+
+    /** 36: pinned PLANK counts ~seconds held (deterministic; tolerance, never exact). */
+    static void case36_manualPlankCounts() {
+        VyayamaCoach c = mk(true); c.setManualExercise("PLANK");
+        int reps = 0; String key = "NONE";
+        for (int f = 0; f < 210; f++) {
+            VyayamaCoach.Result r = c.onFrame(plankPose(), tNs());
+            reps = r.reps; key = r.key;
+        }
+        expectKey ("manual PLANK key", key, "PLANK");
+        expectNear("manual PLANK reps ~ seconds held", reps, 6f, 2f);
+    }
+
+    /** 37: forcing exercising=true never fabricates reps while standing idle. */
+    static void case37_manualIdleNoFalseReps() {
+        VyayamaCoach c = mk(true); c.setManualExercise("SQUAT");
+        int reps = 0; boolean ex = false;
+        for (int f = 0; f < 120; f++) {
+            VyayamaCoach.Result r = c.onFrame(standPose(), tNs());
+            reps = r.reps; ex = r.exercising;
+        }
+        expectReps("manual idle: no false reps", reps, 0);
+        expectBool("manual marks exercising even when idle", ex, true);
+    }
+
+    /** 38: pinning the SAME exercise mid-bout retains and continues the count. */
+    static void case38_continueSameBoutRetains() {
+        VyayamaCoach c = mk(true);
+        int reps = 0;
+        for (int rep = 0; rep < 2; rep++)
+            for (int f = 0; f < 45; f++)
+                reps = c.onFrame(squatPose(130f + 40f*(float)Math.cos(2*Math.PI*f/45)), tNs()).reps;
+        int afterAuto = reps;
+        c.setManualExercise("SQUAT");
+        for (int rep = 0; rep < 2; rep++)
+            for (int f = 0; f < 45; f++)
+                reps = c.onFrame(squatPose(130f + 40f*(float)Math.cos(2*Math.PI*f/45)), tNs()).reps;
+        expectReps("auto counted 2 before pin", afterAuto, 2);
+        expectReps("pin SAME exercise retains+continues count", reps, 4);
+    }
+
+    /** 39: pinning a DIFFERENT exercise resets the rep FSM immediately (no stale half-rep leak). */
+    static void case39_crossPinResetsFsm() {
+        VyayamaCoach c = mk(true);
+        int reps = 0;
+        for (int rep = 0; rep < 2; rep++)
+            for (int f = 0; f < 45; f++)
+                reps = c.onFrame(squatPose(130f + 40f*(float)Math.cos(2*Math.PI*f/45)), tNs()).reps;
+        int afterSquat = reps;
+        c.setManualExercise("BICEP_CURL");
+        int firstAfterPin = c.onFrame(curlPose(150f), tNs()).reps;
+        int curlReps = firstAfterPin;
+        for (int rep = 0; rep < 3; rep++)
+            for (int f = 0; f < 40; f++)
+                curlReps = c.onFrame(curlPose(100f - 50f*(float)Math.cos(2*Math.PI*f/40)), tNs()).reps;
+        expectReps("auto counted 2 squats", afterSquat, 2);
+        expectReps("cross-pin zeroes reps immediately", firstAfterPin, 0);
+        expectBool("fresh curl count after cross-pin (1..3)", curlReps >= 2 && curlReps <= 3, true);
+    }
+
+    /** 40: manualExercise is config-like and survives reset() (like filterEnabled). */
+    static void case40_manualSurvivesReset() {
+        VyayamaCoach c = mk(true); c.setManualExercise("PUSHUP");
+        c.reset();
+        expectBool("manual survives reset()", c.isManual(), true);
+        expectKey ("manual key survives reset()", c.manualKey(), "PUSHUP");
+    }
+
+    /** 41: null manual == today's automatic path (byte-identical classification). */
+    static void case41_manualNullIsAuto() {
+        VyayamaCoach c = mk(true);   // never set manual → null
+        String key = drive(c, 40, f -> squatPose(130f + 40f*(float)Math.cos(2*Math.PI*f/45)));
+        expectKey("manual=null is automatic (squat window)", key, "SQUAT");
+    }
+
+    /** 42: pinned exercise whose primary signal doesn't move counts nothing (no phantom reps). */
+    static void case42_manualMismatchNoCount() {
+        VyayamaCoach c = mk(true); c.setManualExercise("BICEP_CURL");
+        int reps = 0; String key = "NONE";
+        for (int rep = 0; rep < 5; rep++)
+            for (int f = 0; f < 45; f++) {
+                VyayamaCoach.Result r = c.onFrame(squatPose(130f + 40f*(float)Math.cos(2*Math.PI*f/45)), tNs());
+                reps = r.reps; key = r.key;
+            }
+        expectReps("pinned curl + squat motion: 0 reps", reps, 0);
+        expectKey ("pinned curl stays BICEP_CURL", key, "BICEP_CURL");
+    }
+
+    /** 43: switching off PLANK to a rep exercise resets cleanly (no seconds leak as reps). */
+    static void case43_manualPlankToRepExercise() {
+        VyayamaCoach c = mk(true); c.setManualExercise("PLANK");
+        int plankReps = 0;
+        for (int f = 0; f < 120; f++) plankReps = c.onFrame(plankPose(), tNs()).reps;
+        c.setManualExercise("SQUAT");
+        int firstAfterPin = c.onFrame(squatPose(165f), tNs()).reps;
+        int reps = firstAfterPin; String key = "NONE";
+        for (int rep = 0; rep < 6; rep++)
+            for (int f = 0; f < 45; f++) {
+                VyayamaCoach.Result r = c.onFrame(squatPose(130f + 40f*(float)Math.cos(2*Math.PI*f/45)), tNs());
+                reps = r.reps; key = r.key;
+            }
+        expectAtLeast("plank banked some seconds", plankReps, 1);
+        expectReps("plank->squat zeroes the counter", firstAfterPin, 0);
+        expectKey ("plank->squat now SQUAT", key, "SQUAT");
+        expectAtLeast("plank->squat counts squats (>=4)", reps, 4);
+    }
+
+    /** 44: pinned SQUAT reports SQUAT on EVERY frame under perfect push-up motion (ladder bypassed). */
+    static void case44_manualPinsChosenOnly() {
+        VyayamaCoach c = mk(true); c.setManualExercise("SQUAT");
+        boolean allSquat = true;
+        for (int rep = 0; rep < 5; rep++)
+            for (int f = 0; f < 40; f++) {
+                VyayamaCoach.Result r = c.onFrame(pushupPose(125f + 35f*(float)Math.cos(2*Math.PI*f/40)), tNs());
+                if (!r.key.equals("SQUAT")) allSquat = false;
+            }
+        expectBool("pinned SQUAT reports SQUAT every frame under pushup motion", allSquat, true);
+    }
+
+    // ================= PUSH-UP LENIENCY + FAST-REP 45-47 =================
+
+    /** 45: a SHALLOW / foreshortened push-up (moderate elbow bend) now counts via the lenient
+     *  defBottom + adaptive calibration. (pushupPose maps its input ~+22° higher when measured,
+     *  so input 112..158 ≈ a measured ~134..178 swing — a believable foreshortened push-up.) */
+    static void case45_shallowPushupCounts() {
+        VyayamaCoach c = mk(true);
+        int reps = 0; String key = "NONE";
+        for (int rep = 0; rep < 8; rep++)
+            for (int f = 0; f < 40; f++) {
+                float elbow = 135f + 23f*(float)Math.cos(2*Math.PI*f/40);   // input 112..158 (shallow/foreshortened)
+                VyayamaCoach.Result r = c.onFrame(pushupPose(elbow), tNs());
+                reps = r.reps; key = r.key;
+            }
+        expectKey ("shallow push-up -> PUSHUP", key, "PUSHUP");
+        expectAtLeast("shallow push-up counts (>=4)", reps, 4);
+    }
+
+    /** 46: FAST push-ups at a LOW frame-rate (each rep only ~4-5 frames) still count — the FSM now
+     *  advances multiple phases per frame. Each rep here lasts ~480ms (> MIN_REP_MS), so they are real. */
+    static void case46_fastPushupLowFps() {
+        VyayamaCoach c = mk(true);
+        long dt = 120_000_000L;   // ~8.3 fps (heavily-loaded device)
+        long t = 0; int reps = 0; String key = "NONE";
+        float[] seq = {160f, 100f, 100f, 100f, 160f};   // 5 frames/rep, ~480ms
+        for (int rep = 0; rep < 9; rep++)
+            for (float e : seq) {
+                VyayamaCoach.Result r = c.onFrame(pushupPose(e), t);
+                t += dt; reps = r.reps; key = r.key;
+            }
+        expectKey ("fast low-fps push-up -> PUSHUP", key, "PUSHUP");
+        expectAtLeast("fast low-fps push-up counts (>=4)", reps, 4);
+    }
+
+    /** 47: a genuinely TOO-FAST push-up (sub-300ms dips) is still rejected — multi-advance does NOT
+     *  let MIN_REP_MS be bypassed (jitter / bounce cannot fabricate reps). */
+    static void case47_tooFastPushupRejected() {
+        VyayamaCoach c = mk(true);
+        long t = 0; int reps = 0;
+        for (int i = 0; i < 80; i++) {
+            float e = (i % 2 == 0) ? 160f : 100f;     // alternate every 33ms → each dip ~66ms
+            reps = c.onFrame(pushupPose(e), t).reps;
+            t += 33_000_000L;
+        }
+        expectReps("too-fast push-up: no reps (MIN_REP_MS holds under multi-advance)", reps, 0);
     }
 
     /** A front-on squat whose knee ANGLE stays ~straight (foreshortened) while the HIPS drop.
