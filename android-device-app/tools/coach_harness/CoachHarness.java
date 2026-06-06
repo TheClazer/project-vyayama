@@ -1276,88 +1276,45 @@ public final class CoachHarness {
         expectKey("shallow-fold sit-up -> SITUP", key, "SITUP");
     }
 
-    // ================= VoiceCoach (pure-Java cadence brain) =================
+    // ================= VoiceCoach (eyes-off: speaks every rep) =================
     static void vcTests() {
-        // 1) warm-up: rep1/rep2 silent, rep3 speaks
+        // 1) speaks EVERY rep, count first
         VoiceCoach v = new VoiceCoach(); v.onExerciseChange("SQUAT", 0L);
-        String l1 = v.onRep("SQUAT", 1, 60, "DEPTH", 0L);
-        String l2 = v.onRep("SQUAT", 2, 60, "DEPTH", 1_000_000_000L);
-        String l3 = v.onRep("SQUAT", 3, 60, "DEPTH", 6_000_000_000L);
-        expectBool("voice: rep1 silent", l1 == null, true);
-        expectBool("voice: rep2 silent", l2 == null, true);
-        expectBool("voice: rep3 speaks", l3 != null && l3.length() > 0, true);
+        String l1 = v.onRep("SQUAT", 1, 100, "CLEAN", 0L);
+        expectBool("voice: speaks rep 1 with count", l1 != null && l1.contains("1"), true);
+        String l2 = v.onRep("SQUAT", 2, 100, "CLEAN", 1_000_000_000L);
+        expectBool("voice: speaks rep 2 with count", l2 != null && l2.contains("2"), true);
 
-        // 2) dominant issue -> a DEPTH cue
-        expectBool("voice: dominant DEPTH cue", inArr(l3, VC_DEPTH), true);
+        // 2) count matches the rep number
+        VoiceCoach vc = new VoiceCoach(); vc.onExerciseChange("PUSHUP", 0L);
+        String l7 = vc.onRep("PUSHUP", 7, 100, "CLEAN", 0L);
+        expectBool("voice: count matches rep number", l7 != null && l7.contains("7"), true);
 
-        // 3) no verbatim repeat across two spoken DEPTH cues
-        VoiceCoach v3 = new VoiceCoach(); v3.onExerciseChange("SQUAT", 0L);
-        v3.onRep("SQUAT", 1, 60, "DEPTH", 0L); v3.onRep("SQUAT", 2, 60, "DEPTH", 100_000_000L);
-        String a = v3.onRep("SQUAT", 3, 60, "DEPTH", 200_000_000L);
-        v3.onRep("SQUAT", 4, 60, "DEPTH", 5_000_000_000L); v3.onRep("SQUAT", 5, 60, "DEPTH", 6_000_000_000L);
-        String b = v3.onRep("SQUAT", 6, 60, "DEPTH", 9_000_000_000L);
-        expectBool("voice: no verbatim repeat", a != null && b != null && !a.equals(b), true);
+        // 3) a faulty rep gets a coaching comment (count + ", " + cue)
+        VoiceCoach v2 = new VoiceCoach(); v2.onExerciseChange("SQUAT", 0L);
+        String f = v2.onRep("SQUAT", 1, 60, "DEPTH", 0L);
+        expectBool("voice: fault gets a comment", f != null && f.contains(", "), true);
 
-        // 4) min-time guard: within 4s of speaking -> silent
-        VoiceCoach v4 = new VoiceCoach(); v4.onExerciseChange("SQUAT", 0L);
-        v4.onRep("SQUAT", 1, 60, "DEPTH", 0L); v4.onRep("SQUAT", 2, 60, "DEPTH", 100_000_000L);
-        v4.onRep("SQUAT", 3, 60, "DEPTH", 200_000_000L);   // speaks
-        String s4 = v4.onRep("SQUAT", 4, 60, "DEPTH", 300_000_000L);
-        String s5 = v4.onRep("SQUAT", 5, 60, "DEPTH", 400_000_000L);
-        expectBool("voice: min-time guard", s4 == null && s5 == null, true);
+        // 4) a clean rep (no praise due yet) is just the count
+        VoiceCoach v3 = new VoiceCoach(); v3.onExerciseChange("PUSHUP", 0L);
+        String c = v3.onRep("PUSHUP", 1, 100, "CLEAN", 0L);
+        expectBool("voice: clean rep is count-only", c.equals("1."), true);
 
-        // 5) praise path: 4 CLEAN reps -> a praise line
-        VoiceCoach v5 = new VoiceCoach(); v5.onExerciseChange("PUSHUP", 0L);
-        v5.onRep("PUSHUP", 1, 100, "CLEAN", 0L); v5.onRep("PUSHUP", 2, 100, "CLEAN", 1_000_000_000L);
-        v5.onRep("PUSHUP", 3, 100, "CLEAN", 2_000_000_000L);
-        String pr = v5.onRep("PUSHUP", 4, 100, "CLEAN", 6_000_000_000L);
-        expectBool("voice: praise on clean streak", inArr(pr, VC_PRAISE), true);
+        // 5) disabled -> silent
+        VoiceCoach v4 = new VoiceCoach(); v4.setEnabled(false);
+        expectBool("voice: disabled silent", v4.onRep("SQUAT", 1, 60, "DEPTH", 0L) == null, true);
 
-        // 6) milestone: rep 10 announces and contains "10"
-        VoiceCoach v6 = new VoiceCoach(); v6.onExerciseChange("SQUAT", 0L);
+        // 6) milestone hype on every 10th rep
+        VoiceCoach v5 = new VoiceCoach(); v5.onExerciseChange("SQUAT", 0L);
         String m = null;
-        for (int i = 1; i <= 10; i++) m = v6.onRep("SQUAT", i, 90, "CLEAN", i * 5_000_000_000L);
-        expectBool("voice: milestone at 10", m != null && m.contains("10"), true);
+        for (int i = 1; i <= 10; i++) m = v5.onRep("SQUAT", i, 100, "CLEAN", 0L);
+        expectBool("voice: milestone at 10", m != null && m.contains("10") && m.contains(", "), true);
 
-        // 7) reset on exercise change -> warm-up restarts
-        VoiceCoach v7 = new VoiceCoach(); v7.onExerciseChange("SQUAT", 0L);
-        v7.onRep("SQUAT", 1, 60, "DEPTH", 0L); v7.onRep("SQUAT", 2, 60, "DEPTH", 1_000_000_000L);
-        v7.onExerciseChange("BICEP_CURL", 10_000_000_000L);
-        String n1 = v7.onRep("BICEP_CURL", 1, 60, "ROM", 11_000_000_000L);
-        String n2 = v7.onRep("BICEP_CURL", 2, 60, "ROM", 12_000_000_000L);
-        expectBool("voice: warm-up restarts on switch", n1 == null && n2 == null, true);
-
-        // 8) implicit exKey-mismatch flush -> silent
-        VoiceCoach v8 = new VoiceCoach(); v8.onExerciseChange("SQUAT", 0L);
-        v8.onRep("SQUAT", 1, 60, "DEPTH", 0L); v8.onRep("SQUAT", 2, 60, "DEPTH", 1_000_000_000L);
-        String mm = v8.onRep("PUSHUP", 1, 60, "SAG", 12_000_000_000L);
-        expectBool("voice: implicit flush on exKey change", mm == null, true);
-
-        // 9) disabled -> silent; re-enabled -> speaks again
-        VoiceCoach v9 = new VoiceCoach(); v9.onExerciseChange("SQUAT", 0L); v9.setEnabled(false);
-        String d1 = v9.onRep("SQUAT", 1, 60, "DEPTH", 0L);
-        String d2 = v9.onRep("SQUAT", 2, 60, "DEPTH", 1_000_000_000L);
-        String d3 = v9.onRep("SQUAT", 3, 60, "DEPTH", 2_000_000_000L);
-        v9.setEnabled(true);
-        String e1 = v9.onRep("SQUAT", 4, 60, "DEPTH", 6_000_000_000L);
-        String e2 = v9.onRep("SQUAT", 5, 60, "DEPTH", 10_000_000_000L);
-        String e3 = v9.onRep("SQUAT", 6, 60, "DEPTH", 14_000_000_000L);
-        expectBool("voice: disabled silent", d1 == null && d2 == null && d3 == null, true);
-        expectBool("voice: re-enabled speaks", e1 != null || e2 != null || e3 != null, true);
-
-        // 10) a single off-rep in a clean window is not corrected (pattern, not per-rep)
-        VoiceCoach v10 = new VoiceCoach(); v10.onExerciseChange("SQUAT", 0L);
-        v10.onRep("SQUAT", 1, 100, "CLEAN", 0L); v10.onRep("SQUAT", 2, 100, "CLEAN", 1_000_000_000L);
-        String s10 = v10.onRep("SQUAT", 3, 70, "DEPTH", 6_000_000_000L);
-        expectBool("voice: single off-rep not a correction", !inArr(s10, VC_DEPTH), true);
-    }
-    static final String[] VC_DEPTH  = { "Go a little deeper.", "A bit lower next time.", "Sink down further." };
-    static final String[] VC_PRAISE = { "Beautiful form — keep going.", "That's it, nice and clean.",
-                                        "Looking strong — stay with it.", "Smooth reps, lovely control." };
-    static boolean inArr(String s, String[] arr) {
-        if (s == null) return false;
-        for (String a : arr) if (a.equals(s)) return true;
-        return false;
+        // 7) a quick praise appears within a clean streak
+        VoiceCoach v6 = new VoiceCoach(); v6.onExerciseChange("SQUAT", 0L);
+        boolean praised = false;
+        for (int i = 1; i <= 6; i++) { String s = v6.onRep("SQUAT", i, 100, "CLEAN", 0L); if (s != null && s.contains(", ")) praised = true; }
+        expectBool("voice: praise on clean streak", praised, true);
     }
 
     /** Squat where the arms also swing (front raise) — knees drive the rep; arms are a distractor. */
