@@ -15,7 +15,6 @@ import java.util.Calendar;
 public final class ReminderScheduler {
 
     static final String ACTION = "com.qc.posedetectionYoloNAS.FIRE";
-    private static final long WINDOW = 10 * 60_000L;   // 10-min flex window
 
     private ReminderScheduler() {}
 
@@ -29,11 +28,8 @@ public final class ReminderScheduler {
         if (!r.enabled || !r.runsOnAnyDay()) { am.cancel(pi); return; }
         long when = computeNextTriggerMillis(r, System.currentTimeMillis());
         if (when <= 0) { am.cancel(pi); return; }
-        try {
-            am.setWindowAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, WINDOW, pi);
-        } catch (SecurityException e) {
-            am.setWindow(AlarmManager.RTC_WAKEUP, when, WINDOW, pi);
-        }
+        // inexact + Doze-resilient; needs no exact-alarm permission on any API level (minSdk 24).
+        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, pi);
     }
 
     public static void cancel(Context ctx, long id) {
