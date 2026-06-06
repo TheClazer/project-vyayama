@@ -2,6 +2,7 @@ build/
 .gradle/
 .cxx/
 *.dlc
+!app/src/main/assets/*.dlc
 jniLibs/
 sdk/
 local.properties
