@@ -82,6 +82,10 @@ public final class CoachHarness {
         case46_fastPushupLowFps();
         case47_tooFastPushupRejected();
 
+        // ---- incomplete-ROM leniency (peak/valley completion) 48-49 ----
+        case48_partialExtensionCurls();
+        case49_partialReturnSquat();
+
         System.out.println("==========================================");
         System.out.println("PASSED " + passed + " / " + total + (skipped > 0 ? ("  (SKIPPED " + skipped + ")") : ""));
         if (passed != total) System.exit(1);
@@ -810,6 +814,38 @@ public final class CoachHarness {
             t += 33_000_000L;
         }
         expectReps("too-fast push-up: no reps (MIN_REP_MS holds under multi-advance)", reps, 0);
+    }
+
+    // ================= INCOMPLETE-ROM LENIENCY 48-49 =================
+    // A rep that reaches bottom but doesn't fully return to the top still counts (peak/valley
+    // completion) — the exact failure of a pro doing slow curls without locking the elbow out.
+
+    /** 48: curls that fully squeeze but NEVER lock the elbow out at the top still count.
+     *  (curlPose's input is INVERTED — high input = more flexed; input 100..150 ≈ a measured
+     *  ~128°→39° swing: full curl at the bottom, only a partial ~128° extension at the top.) */
+    static void case48_partialExtensionCurls() {
+        VyayamaCoach c = mk(true);
+        int reps = 0; String key = "NONE";
+        for (int rep = 0; rep < 6; rep++)
+            for (int f = 0; f < 40; f++) {
+                float elbow = 125f + 25f*(float)Math.cos(2*Math.PI*f/40);   // input 100..150 = no top lockout
+                VyayamaCoach.Result r = c.onFrame(curlPose(elbow), tNs());
+                reps = r.reps; key = r.key;
+            }
+        expectKey ("partial-extension curl -> BICEP_CURL", key, "BICEP_CURL");
+        expectAtLeast("partial-extension curls count (>=3)", reps, 3);
+    }
+
+    /** 49: squats that don't fully stand up between reps (knee 85..155) still count. */
+    static void case49_partialReturnSquat() {
+        VyayamaCoach c = mk(true);
+        int reps = 0;
+        for (int rep = 0; rep < 6; rep++)
+            for (int f = 0; f < 45; f++) {
+                float knee = 120f + 35f*(float)Math.cos(2*Math.PI*f/45);   // 85..155 (never fully extends)
+                reps = c.onFrame(squatPose(knee), tNs()).reps;
+            }
+        expectAtLeast("incomplete-return squat counts (>=4)", reps, 4);
     }
 
     /** A front-on squat whose knee ANGLE stays ~straight (foreshortened) while the HIPS drop.

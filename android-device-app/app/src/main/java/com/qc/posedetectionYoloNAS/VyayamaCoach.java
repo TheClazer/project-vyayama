@@ -72,12 +72,18 @@ public class VyayamaCoach {
     private int reps = 0;
     private long repStartNs = 0;
     private float maxP = 0f;
+    private float ascMinP = 1f;          // lowest progress seen on the current ascent (the rep's "top" valley)
 
     // rep FSM thresholds (FROZEN — reproduce the 13 vectors)
     static final float TOP_ENTER    = 0.15f;
     static final float BOTTOM_ENTER = 0.85f;
     static final float PARTIAL_MIN  = 0.40f;
     static final long  MIN_REP_MS   = 300L;
+    // Peak/valley completion: a rep that reached BOTTOM but doesn't return all the way to TOP (e.g. a
+    // controlled curl that stays slightly bent at the top, or any user who doesn't fully lock out)
+    // still completes once they start the NEXT rep — provided they extended at least this far back up.
+    // This both counts the rep AND lets per-user calibration bootstrap, so subsequent reps count normally.
+    static final float REARM_RELEASE = 0.55f;
     private boolean lastPartial = false;     // advisory only (analytics/cue); never changes reps
     private int     partialTotal = 0;        // count of flagged partials since reset (analytics/test)
 
@@ -97,7 +103,7 @@ public class VyayamaCoach {
     // ---- adaptive range calibration ----
     static final float REST_LERP   = 0.5f;
     static final float EFFORT_LERP = 0.5f;
-    static final int   CAL_REPS    = 2;
+    static final int   CAL_REPS    = 1;   // adapt to the user's real range after a single attempt
     static final float MIN_SPAN_FRAC       = 0.35f;
     static final float RANGE_MARGIN        = 0.15f;
     static final float TOP_CLAMP_FRAC      = 0.40f;
@@ -122,7 +128,7 @@ public class VyayamaCoach {
     // ---- bicep-curl positive-evidence gates ----
     static final float CURL_TORSO_AMP_MAX = 18f;   // a real curl keeps the trunk still (no swing)
     static final float CURL_HIP_AMP_MAX   = 18f;   // no trunk fold → this is what excludes sit-ups
-    static final float CURL_FLEX_MIN      = 80f;   // active elbow must reach a genuinely flexed angle
+    static final float CURL_FLEX_MIN      = 95f;   // active elbow must reach a genuinely flexed angle (lenient)
     // ---- squat: viewpoint-stable hip-drop (fires when a front-on knee angle foreshortens flat) ----
     static final float HIP_DROP_AMP_MIN = 0.25f;   // hip-drop swing (torso-lengths) that signals a squat
     static final float SQUAT_HIP_TOP    = -0.85f;  // standing (hips well above the knees)
@@ -311,7 +317,7 @@ public class VyayamaCoach {
             cand = "SHOULDER_PRESS";
         } else if (kneeAmp > 30f || hipDropAmp > HIP_DROP_AMP_MIN) {
             cand = "SQUAT";
-        } else if (elbowAmp > 25f && kneeAmp < 20f && openAmp <= 0.40f
+        } else if (elbowAmp > 20f && kneeAmp < 20f && openAmp <= 0.40f
                 && torsoAmp < CURL_TORSO_AMP_MAX
                 && hipAngAmp < CURL_HIP_AMP_MAX
                 && minActiveElbow() < CURL_FLEX_MIN
@@ -390,7 +396,7 @@ public class VyayamaCoach {
             if (p >= BOTTOM_ENTER) {
                 phase = "BOTTOM"; repStartNs = tsNs; maxP = p;
             } else if (recentPeakP >= BOTTOM_ENTER && p > TOP_ENTER) {
-                phase = "ASCENDING"; maxP = recentPeakP;
+                phase = "ASCENDING"; maxP = recentPeakP; ascMinP = p;
                 repStartNs = tsNs - 2L * MIN_REP_MS * 1_000_000L; // the dip already took real time
             }
         }
@@ -418,13 +424,22 @@ public class VyayamaCoach {
                     break;
                 case "BOTTOM":
                     maxP = Math.max(maxP, p);
-                    if (p < BOTTOM_ENTER) phase = "ASCENDING";
+                    if (p < BOTTOM_ENTER) { phase = "ASCENDING"; ascMinP = p; }
                     break;
                 case "ASCENDING":
-                    if (p >= BOTTOM_ENTER) phase = "BOTTOM";
-                    else if (p <= TOP_ENTER) {
+                    ascMinP = Math.min(ascMinP, p);
+                    if (p <= TOP_ENTER) {                     // full return to the top → normal completion
                         if ((tsNs - repStartNs) / 1_000_000L >= MIN_REP_MS) { reps++; completed = true; }
                         phase = "TOP";
+                    } else if (p >= BOTTOM_ENTER) {
+                        // Re-bottoming WITHOUT a full top-out: the user extended at least part-way (the
+                        // valley) and is now driving the next rep. Count the rep that just ended at that
+                        // valley (peak/valley completion), then begin the next one. The release guard
+                        // keeps tiny bottom bobs from counting; MIN_REP_MS still applies.
+                        if (ascMinP <= REARM_RELEASE && (tsNs - repStartNs) / 1_000_000L >= MIN_REP_MS) {
+                            reps++; completed = true;
+                        }
+                        phase = "BOTTOM"; repStartNs = tsNs; maxP = p;
                     }
                     break;
             }
