@@ -1025,6 +1025,8 @@ public class CameraFragment extends Fragment
             mPrevReps = r.reps;
             ProfileStore.bumpStreak(prof);
             ProfileStore.addReps(prof, ex, delta);
+            android.app.Activity act = getActivity();   // live stat-strip refresh (only on a new rep)
+            if (act instanceof MainActivity) act.runOnUiThread(((MainActivity) act)::refreshStatStrip);
             if (ProfileStore.maybeUpdatePB(prof, ex, r.reps)) {
                 mFragmentRender.showNewPB(ProfileStore.pretty(ex), r.reps);
             }

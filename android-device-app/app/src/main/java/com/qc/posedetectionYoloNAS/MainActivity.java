@@ -13,6 +13,9 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.SubMenu;
 import android.view.WindowManager;
+import android.content.Intent;
+import android.view.View;
+import android.widget.TextView;
 
 import org.opencv.android.OpenCVLoader;
 
@@ -22,7 +25,7 @@ public class MainActivity extends AppCompatActivity {
 
     public static char runtime_var = 'D';   // default = DSP = Hexagon NPU
 
-    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3, M_VISION = 4;
+    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3, M_VISION = 4, M_PROFILE = 5;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,6 +41,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         overToCamera(runtime_var);
+        refreshStatStrip();
     }
 
     @Override
@@ -50,11 +54,19 @@ public class MainActivity extends AppCompatActivity {
         MenuItem vis = menu.add(0, M_VISION, 1, "Coach Vision");
         vis.setCheckable(true);
         vis.setChecked(FragmentRender.SHOW_VISION);
+        // profile/stats — the only action button (shows as a volt icon left of the overflow)
+        MenuItem prof = menu.add(0, M_PROFILE, 0, "Profile");
+        prof.setIcon(R.drawable.ic_profile);
+        prof.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
         return true;
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == M_PROFILE) {
+            startActivity(new Intent(this, ProfileDetailActivity.class));
+            return true;
+        }
         if (item.getItemId() == M_VISION) {
             FragmentRender.SHOW_VISION = !FragmentRender.SHOW_VISION;
             item.setChecked(FragmentRender.SHOW_VISION);
@@ -84,6 +96,32 @@ public class MainActivity extends AppCompatActivity {
         String prof = ProfileStore.getActive();
         getSupportActionBar().setTitle("Vyāyāma");
         getSupportActionBar().setSubtitle((prof.isEmpty() ? "" : prof + "  ·  ") + "Coach · " + engineName(runtime_var));
+    }
+
+    /** Streak + today's best chip above the preview. Called on resume + on each new rep (not per frame). */
+    void refreshStatStrip() {
+        View strip = findViewById(R.id.stat_strip);
+        if (strip == null) return;
+        String prof = ProfileStore.getActive();
+        if (prof == null || prof.isEmpty()) { strip.setVisibility(View.GONE); return; }
+        TextView streakV = findViewById(R.id.strip_streak);
+        TextView bestV = findViewById(R.id.strip_best);
+        int streak = ProfileStore.getStreak(prof);
+        streakV.setText(streak > 0 ? ("🔥 " + streak) : "Day 1");
+        String bestEx = null; int best = 0; boolean session = false;
+        for (String ex : ProfileStore.EXERCISES) {
+            int v = ProfileStore.getSession(prof, ex);
+            if (v > best) { best = v; bestEx = ex; session = true; }
+        }
+        if (bestEx == null) {
+            for (String ex : ProfileStore.EXERCISES) {
+                int v = ProfileStore.getPB(prof, ex);
+                if (v > best) { best = v; bestEx = ex; }
+            }
+        }
+        bestV.setText(bestEx == null ? "Let's get the first rep in"
+                : (session ? "Today: " : "PB: ") + best + " " + ProfileStore.pretty(bestEx));
+        strip.setVisibility(View.VISIBLE);
     }
 
     private void overToCamera(char runtime_value) {
