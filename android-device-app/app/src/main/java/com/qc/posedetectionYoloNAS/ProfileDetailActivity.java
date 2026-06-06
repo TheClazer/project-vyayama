@@ -48,6 +48,12 @@ public class ProfileDetailActivity extends AppCompatActivity {
         setContentView(buildScreen());   // rebuild so edits/sessions reflect on return
     }
 
+    @Override
+    protected void onPause() {
+        ProfileStore.flush();   // leaving the profile screen → persist the RAM stats buffer
+        super.onPause();
+    }
+
     private View buildScreen() {
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(INK);

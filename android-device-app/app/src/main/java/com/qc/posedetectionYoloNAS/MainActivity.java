@@ -181,7 +181,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStop() {
+        // session close / app backgrounded → flush the RAM stats buffer to persistent storage
+        ProfileStore.flush();
+        super.onStop();
+    }
+
+    @Override
     protected void onDestroy() {
+        ProfileStore.flush();
         // free the TTS engine only on a real teardown (not a config-change/rotation rebuild)
         if (isFinishing() && VOICE_PLAYER != null) { VOICE_PLAYER.shutdown(); VOICE_PLAYER = null; }
         super.onDestroy();
