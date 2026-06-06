@@ -28,13 +28,20 @@ public class MainActivity extends AppCompatActivity {
     // per-onResume fragment/coach rebuild (mirrors runtime_var / FragmentRender.SHOW_VISION).
     // Written on the UI thread (mode dialog), read on the camera thread (CameraFragment).
     public static volatile String MANUAL_EXERCISE = null;
+    // Offline voice coach: an app-scoped TTS player (survives the per-resume fragment rebuild) + the
+    // pure-Java cadence brain. Both live here so they outlive CameraFragment recreation.
+    public static volatile VoicePlayer VOICE_PLAYER = null;
+    public static final VoiceCoach VOICE_COACH = new VoiceCoach();
 
-    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3, M_VISION = 4, M_PROFILE = 5, M_MODE = 6;
+    private static final int M_NPU = 1, M_GPU = 2, M_CPU = 3, M_VISION = 4, M_PROFILE = 5, M_MODE = 6, M_VOICE = 7;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         ProfileStore.init(this);
+        VoicePrefs.init(this);
+        if (VOICE_PLAYER == null)
+            VOICE_PLAYER = new VoicePlayer(getApplicationContext(), VoicePrefs.getRate(), 1.05f, VoicePrefs.getVoiceName());
         setContentView(R.layout.main_activity);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         updateBar();
@@ -61,6 +68,9 @@ public class MainActivity extends AppCompatActivity {
         // manual mode — pick one exercise (or Automatic). Title reflects the current pin.
         MenuItem mode = menu.add(0, M_MODE, 2, modeTitle());
         mode.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);   // lives in the 3-dot overflow
+        // voice coach settings (enable, voice, rate)
+        MenuItem voice = menu.add(0, M_VOICE, 3, "Voice settings");
+        voice.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
         // profile/stats — the only action button (shows as a volt icon left of the overflow)
         MenuItem prof = menu.add(0, M_PROFILE, 0, "Profile");
         prof.setIcon(R.drawable.ic_profile);
@@ -86,6 +96,10 @@ public class MainActivity extends AppCompatActivity {
                 updateBar();                                             // refresh subtitle
                 invalidateOptionsMenu();                                 // refresh "Mode: X" title
             });
+            return true;
+        }
+        if (item.getItemId() == M_VOICE) {
+            VoiceSettingsDialog.show(this, VOICE_PLAYER, this::invalidateOptionsMenu);
             return true;
         }
         char r;
@@ -164,5 +178,12 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         overToCamera(runtime_var);
+    }
+
+    @Override
+    protected void onDestroy() {
+        // free the TTS engine only on a real teardown (not a config-change/rotation rebuild)
+        if (isFinishing() && VOICE_PLAYER != null) { VOICE_PLAYER.shutdown(); VOICE_PLAYER = null; }
+        super.onDestroy();
     }
 }

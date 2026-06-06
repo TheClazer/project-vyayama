@@ -26,6 +26,7 @@ public class VyayamaCoach {
         public boolean cueWarn = false;     // true = correction (coral), false = praise/live coaching (volt)
         public int formScore = -1;
         public boolean exercising = false;
+        public String issue = "CLEAN";      // canonical per-rep form code (DEPTH/SAG/SWING/…); "CLEAN" = no fault
     }
 
     /** Live read-out of the engine's internal signals — powers the optional Coach Vision overlay. */
@@ -94,6 +95,7 @@ public class VyayamaCoach {
 
     private String prevPhase = "TOP";
     private String lastCue = "";
+    private String lastIssue = "CLEAN";   // canonical per-rep form code surfaced on Result.issue (drives the voice coach)
     private int lastScore = -1;
     private boolean lastCueWarn = false;
     private long lastCueNs = 0;
@@ -121,10 +123,10 @@ public class VyayamaCoach {
     static final float ELBOW_PRESS_AMP    = 25f;
     static final float PRESS_TORSO_MAX    = 35f;
     static final float PRESS_KNEE_AMP_MAX = 18f;
-    static final float SITUP_HIP_AMP      = 35f;
-    static final float SITUP_TORSO_AMP    = 25f;
+    static final float SITUP_HIP_AMP      = 28f;   // 35→28: a shallower/partial trunk-fold still recognizes (also the PUSHUP/PRESS "no trunk fold" ceiling)
+    static final float SITUP_TORSO_AMP    = 25f;   // (no longer gates classify — kept declared)
     static final float SITUP_KNEE_AMP_MAX = 22f;
-    static final float SITUP_TORSO_MIN    = 30f;   // amplitude-driven floor (was a hard avgTorso>50 gate)
+    static final float SITUP_TORSO_MIN    = 22f;   // 30→22: a moderate-camera-angle sit-up clears the lean floor (squats/curls/presses read avgTorso≈0)
     // ---- bicep-curl positive-evidence gates ----
     static final float CURL_TORSO_AMP_MAX = 18f;   // a real curl keeps the trunk still (no swing)
     static final float CURL_HIP_AMP_MAX   = 18f;   // no trunk fold → this is what excludes sit-ups
@@ -189,6 +191,7 @@ public class VyayamaCoach {
         r.cue = displayCue(tsNs);
         r.cueWarn = displayWarn;
         r.formScore = lastScore;
+        r.issue = lastIssue;
         return r;
     }
 
@@ -198,7 +201,7 @@ public class VyayamaCoach {
         exercising = false; activeStreak = idleStreak = 0;
         reported = candidate = "NONE"; candStreak = 0;
         repExercise = "NONE"; phase = "TOP"; reps = 0; maxP = 0; repStartNs = 0;
-        repCount = 0; prevPhase = "TOP"; lastCue = ""; lastScore = -1;
+        repCount = 0; prevPhase = "TOP"; lastCue = ""; lastIssue = "CLEAN"; lastScore = -1;
         lastCueWarn = false; lastCueNs = 0; curP = 0f; displayWarn = false;
         lastPartial = false; partialTotal = 0;
         calArmed = calLocked = false; calRepsSeen = 0;
@@ -307,13 +310,17 @@ public class VyayamaCoach {
         if (openAmp > 0.40f && (Float.isNaN(wristUp) || wristUp > WRIST_UP_JACK)) {
             cand = "JUMPING_JACK";
         } else if (torsoVal && avgTorso > SITUP_TORSO_MIN
-                && hipAngAmp > SITUP_HIP_AMP && torsoAmp > SITUP_TORSO_AMP
-                && kneeAmp < SITUP_KNEE_AMP_MAX && elbowAmp < 40f) {
+                && hipAngAmp > SITUP_HIP_AMP
+                && kneeAmp < SITUP_KNEE_AMP_MAX && openAmp <= 0.40f) {
+            // SIT-UP = a big trunk-fold (hipAngAmp) with STATIC legs. The torsoAmp and elbowAmp<40
+            // constraints are dropped: a hands-behind-head sit-up moves the elbows (elbowAmp>40) yet
+            // is unmistakably a sit-up by the hip fold — it must NOT fall through to SHOULDER_PRESS.
             cand = "SITUP";
         } else if (torsoVal && avgTorso > 38f && elbowAmp > 16f && hipAngAmp < SITUP_HIP_AMP) {
             cand = "PUSHUP";   // lenient torso/elbow so an angled, shallow or half push-up still recognizes
         } else if (!Float.isNaN(wristUp) && wristUp > WRIST_UP_PRESS && elbowAmp > ELBOW_PRESS_AMP
-                && torsoVal && avgTorso < PRESS_TORSO_MAX && kneeAmp < PRESS_KNEE_AMP_MAX && openAmp <= 0.40f) {
+                && torsoVal && avgTorso < PRESS_TORSO_MAX && kneeAmp < PRESS_KNEE_AMP_MAX && openAmp <= 0.40f
+                && hipAngAmp < SITUP_HIP_AMP) {   // a press has NO trunk fold → it can never claim a sit-up
             cand = "SHOULDER_PRESS";
         } else if (kneeAmp > 30f || hipDropAmp > HIP_DROP_AMP_MIN) {
             cand = "SQUAT";
@@ -650,9 +657,10 @@ public class VyayamaCoach {
     /** Per-rep biomechanics → 0..100 score + one actionable cue (highest-severity issue wins). */
     private void analyzeForm(String ex) {
         int frames = repCount;
-        if (frames == 0) { lastCue = "Clean rep!"; lastCueWarn = false; lastScore = 100; return; }
+        if (frames == 0) { lastCue = "Clean rep!"; lastCueWarn = false; lastScore = 100; lastIssue = "CLEAN"; return; }
         float tempo = tempoScore(frames);
         String cue = "Clean rep!"; boolean warn = false; int sev = 0; float score = 90f;
+        String code = "CLEAN";   // canonical issue mirroring the highest-severity cue below
 
         switch (ex) {
             case "SQUAT": {
@@ -662,9 +670,9 @@ public class VyayamaCoach {
                 float upright = clamp01(1f - Math.max(0f, maxTorso - 30f) / 45f);
                 score = 100f * (0.45f * depth + 0.20f * clamp01(1f - sym / 40f) + 0.20f * upright + 0.15f * tempo);
                 cue = "Strong squat!";
-                if (depth < 0.75f && sev < 9)  { cue = "Go deeper — hips below knees"; warn = true; sev = 9; }
-                if (sym > 22f && sev < 6)      { cue = "Even out your weight"; warn = true; sev = 6; }
-                if (maxTorso > 50f && sev < 5) { cue = "Chest up — back straight"; warn = true; sev = 5; }
+                if (depth < 0.75f && sev < 9)  { cue = "Go deeper — hips below knees"; warn = true; sev = 9; code = "DEPTH"; }
+                if (sym > 22f && sev < 6)      { cue = "Even out your weight"; warn = true; sev = 6; code = "SYM"; }
+                if (maxTorso > 50f && sev < 5) { cue = "Chest up — back straight"; warn = true; sev = 5; code = "POSTURE"; }
                 break;
             }
             case "PUSHUP": {
@@ -673,9 +681,9 @@ public class VyayamaCoach {
                 float sym = repMeanAbsDiff(6, 7);
                 score = 100f * (0.35f * depth + 0.35f * sagScore + 0.15f * clamp01(1f - sym / 40f) + 0.15f * tempo);
                 cue = "Solid push-up!";
-                if (depth < 0.75f && sev < 8)   { cue = "Lower your chest further"; warn = true; sev = 8; }
-                if (sagScore < 0.6f && sev < 9) { cue = "Hips in line — no sag"; warn = true; sev = 9; }
-                if (sym > 22f && sev < 5)       { cue = "Press evenly both arms"; warn = true; sev = 5; }
+                if (depth < 0.75f && sev < 8)   { cue = "Lower your chest further"; warn = true; sev = 8; code = "DEPTH"; }
+                if (sagScore < 0.6f && sev < 9) { cue = "Hips in line — no sag"; warn = true; sev = 9; code = "SAG"; }
+                if (sym > 22f && sev < 5)       { cue = "Press evenly both arms"; warn = true; sev = 5; code = "SYM"; }
                 break;
             }
             case "BICEP_CURL": {
@@ -683,15 +691,15 @@ public class VyayamaCoach {
                 float driftScore = clamp01(1f - repVar(3) / 400f);
                 score = 100f * (0.45f * rom + 0.4f * driftScore + 0.15f * tempo);
                 cue = "Full range!";
-                if (rom < 0.7f && sev < 7)        { cue = "Extend and squeeze"; warn = true; sev = 7; }
-                if (driftScore < 0.7f && sev < 9) { cue = "Stop swinging — isolate it"; warn = true; sev = 9; }
+                if (rom < 0.7f && sev < 7)        { cue = "Extend and squeeze"; warn = true; sev = 7; code = "ROM"; }
+                if (driftScore < 0.7f && sev < 9) { cue = "Stop swinging — isolate it"; warn = true; sev = 9; code = "SWING"; }
                 break;
             }
             case "JUMPING_JACK": {
                 float ext = clamp01(repMax(2) / 0.9f);
                 score = 100f * (0.7f * ext + 0.3f * tempo);
                 cue = "Great pace!";
-                if (ext < 0.7f && sev < 7) { cue = "Bigger — arms up, feet wide"; warn = true; sev = 7; }
+                if (ext < 0.7f && sev < 7) { cue = "Bigger — arms up, feet wide"; warn = true; sev = 7; code = "ROM"; }
                 break;
             }
             case "SHOULDER_PRESS": {
@@ -700,9 +708,9 @@ public class VyayamaCoach {
                 float drift = clamp01(1f - repVar(3) / 400f);
                 score = 100f * (0.45f * lockoutD + 0.25f * clamp01(1f - sym / 40f) + 0.15f * drift + 0.15f * tempo);
                 cue = "Strong press!";
-                if (lockoutD < 0.75f && sev < 8) { cue = "Press fully overhead — lock it out"; warn = true; sev = 8; }
-                if (sym > 22f && sev < 6)        { cue = "Press evenly — both arms together"; warn = true; sev = 6; }
-                if (drift < 0.6f && sev < 7)     { cue = "Tighten core — don't arch your back"; warn = true; sev = 7; }
+                if (lockoutD < 0.75f && sev < 8) { cue = "Press fully overhead — lock it out"; warn = true; sev = 8; code = "LOCKOUT"; }
+                if (sym > 22f && sev < 6)        { cue = "Press evenly — both arms together"; warn = true; sev = 6; code = "SYM"; }
+                if (drift < 0.6f && sev < 7)     { cue = "Tighten core — don't arch your back"; warn = true; sev = 7; code = "POSTURE"; }
                 break;
             }
             case "SITUP": {
@@ -710,13 +718,13 @@ public class VyayamaCoach {
                 float control = clamp01(1f - repVar(3) / 600f);
                 score = 100f * (0.55f * depth + 0.25f * tempo + 0.20f * control);
                 cue = "Clean sit-up!";
-                if (depth < 0.7f && sev < 8)  { cue = "Come up higher — chest to knees"; warn = true; sev = 8; }
-                if (frames < 14 && sev < 6)   { cue = "Slow it down — control the descent"; warn = true; sev = 6; }
+                if (depth < 0.7f && sev < 8)  { cue = "Come up higher — chest to knees"; warn = true; sev = 8; code = "DEPTH"; }
+                if (frames < 14 && sev < 6)   { cue = "Slow it down — control the descent"; warn = true; sev = 6; code = "TEMPO"; }
                 break;
             }
             default: break;
         }
-        lastCue = cue; lastCueWarn = warn; lastScore = Math.round(clamp01(score / 100f) * 100f);
+        lastCue = cue; lastCueWarn = warn; lastScore = Math.round(clamp01(score / 100f) * 100f); lastIssue = code;
     }
 
     private static float tempoScore(int frames) {

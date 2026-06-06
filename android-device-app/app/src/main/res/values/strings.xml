@@ -3,4 +3,5 @@
 <string name="toast_camera_permission">Camera permission is required for this app</string>
 <string name="request_permission">This app needs camera permission</string>
 <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+<string name="voice_toggle_desc">Toggle voice coach</string>
 </resources>

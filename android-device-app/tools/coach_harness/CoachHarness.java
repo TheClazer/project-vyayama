@@ -86,6 +86,14 @@ public final class CoachHarness {
         case48_partialExtensionCurls();
         case49_partialReturnSquat();
 
+        // ---- sit-up recognition fix 50-52 ----
+        case50_handsBehindHeadSitup();
+        case51_pressNotSitup();
+        case52_shallowFoldSitup();
+
+        // ---- VoiceCoach (pure-Java cadence brain) ----
+        vcTests();
+
         System.out.println("==========================================");
         System.out.println("PASSED " + passed + " / " + total + (skipped > 0 ? ("  (SKIPPED " + skipped + ")") : ""));
         if (passed != total) System.exit(1);
@@ -1166,6 +1174,190 @@ public final class CoachHarness {
         p[R_WR]=new float[]{(shCx+ox) + px*wrPerp + ux*wrAlong, (shCy+oy) + py*wrPerp + uy*wrAlong};
         head(p, shCx + (float)Math.cos(trunkAng)*30*u, shCy + (float)Math.sin(trunkAng)*30*u, 200f);
         return p;
+    }
+
+    /** Sit-up with hands BEHIND THE HEAD: same big trunk-fold + static legs as situpArmPose, but the
+     *  elbows flare MORE (elbowAmp>40, which fails the OLD SITUP elbowAmp<40 cap) and the wrists ride
+     *  ABOVE the shoulders (wristUp>0.35) — exactly the geometry that used to fall through to
+     *  SHOULDER_PRESS. The fixed engine must still lock SITUP (big hip fold, static legs). */
+    static float[][] situpHandsBehindHeadPose(float hipFlexDeg, float armSwing) {
+        float[][] p = blank();
+        float cx = 320, cy = 250, u = 1f;
+        float hipX = cx + 40*u, hipY = cy;
+        float halfW = 26*u;
+        float knX = hipX + 50*u, knY = hipY - 50*u;     // bent legs, static
+        float anX = hipX + 40*u, anY = hipY + 10*u;
+        float thighDx = knX - hipX, thighDy = knY - hipY;
+        double thighAng = Math.atan2(thighDy, thighDx);
+        double trunkAng = thighAng + Math.toRadians(hipFlexDeg);
+        float trunkLen = 80*u;
+        float shCx = hipX + (float)Math.cos(trunkAng)*trunkLen;
+        float shCy = hipY + (float)Math.sin(trunkAng)*trunkLen;
+        double perp = trunkAng + Math.PI/2;
+        float ox = (float)Math.cos(perp)*halfW, oy = (float)Math.sin(perp)*halfW;
+        p[L_SH]=new float[]{shCx-ox, shCy-oy};
+        p[R_SH]=new float[]{shCx+ox, shCy+oy};
+        double hperp = thighAng + Math.PI/2;
+        float hox = (float)Math.cos(hperp)*halfW, hoy=(float)Math.sin(hperp)*halfW;
+        p[L_HIP]=new float[]{hipX-hox, hipY-hoy};
+        p[R_HIP]=new float[]{hipX+hox, hipY+hoy};
+        p[L_KN]=new float[]{knX-hox, knY-hoy};
+        p[R_KN]=new float[]{knX+hox, knY-hoy};
+        p[L_AN]=new float[]{anX-hox, anY-hoy};
+        p[R_AN]=new float[]{anX+hox, anY+hoy};
+        float ux = (float)Math.cos(trunkAng), uy = (float)Math.sin(trunkAng);
+        float px = (float)Math.cos(perp),     py = (float)Math.sin(perp);
+        float flare = 22f*u*armSwing;                    // BIG flare -> elbowAmp>40
+        float elPerp = 16f*u + flare, elAlong = 18f*u;
+        p[L_EL]=new float[]{(shCx-ox) - px*elPerp + ux*elAlong, (shCy-oy) - py*elPerp + uy*elAlong};
+        p[R_EL]=new float[]{(shCx+ox) + px*elPerp + ux*elAlong, (shCy+oy) + py*elPerp + uy*elAlong};
+        // wrists high above the shoulders (toward/behind the head) -> wristUp>0.35
+        float wrPerp = 3f*u, wrAlong = 48f*u;
+        p[L_WR]=new float[]{(shCx-ox) - px*wrPerp + ux*wrAlong, (shCy-oy) - py*wrPerp + uy*wrAlong};
+        p[R_WR]=new float[]{(shCx+ox) + px*wrPerp + ux*wrAlong, (shCy+oy) + py*wrPerp + uy*wrAlong};
+        head(p, shCx + (float)Math.cos(trunkAng)*30*u, shCy + (float)Math.sin(trunkAng)*30*u, 200f);
+        return p;
+    }
+
+    // ================= SIT-UP RECOGNITION 50-52 =================
+
+    /** 50: a hands-behind-head sit-up (elbowAmp>40, wristUp>0.35) must lock SITUP, never SHOULDER_PRESS. */
+    static void case50_handsBehindHeadSitup() {
+        VyayamaCoach c = mk(true);
+        String key = "NONE"; int reps = 0;
+        boolean everPress = false, everCurl = false, everLocked = false;
+        for (int rep = 0; rep < 5; rep++)
+            for (int f = 0; f < 40; f++) {
+                float phase = (float)(2*Math.PI*f/40);
+                float hipFlex = 110f + 40f*(float)Math.cos(phase);     // 150->70 fold
+                float armSwing = 0.5f - 0.5f*(float)Math.cos(phase);
+                VyayamaCoach.Result r = c.onFrame(situpHandsBehindHeadPose(hipFlex, armSwing), tNs());
+                key = r.key; reps = r.reps;
+                if (key.equals("SITUP")) everLocked = true;
+                if (r.key.equals("SHOULDER_PRESS")) everPress = true;
+                if (r.key.equals("BICEP_CURL")) everCurl = true;
+            }
+        expectKey  ("hands-behind-head sit-up -> SITUP", key, "SITUP");
+        expectBool ("NEVER locks SHOULDER_PRESS (the bug)", everPress, false);
+        expectBool ("NEVER locks BICEP_CURL", everCurl, false);
+        expectBool ("actually locked SITUP", everLocked, true);
+        expectAtLeast("hands-behind-head sit-up reps (>=3)", reps, 3);
+    }
+
+    /** 51: a real shoulder press still locks SHOULDER_PRESS (the new hipAngAmp<28 clause is harmless). */
+    static void case51_pressNotSitup() {
+        VyayamaCoach c = mk(true);
+        String key = "NONE"; int reps = 0; boolean everSitup = false, locked = false;
+        for (int rep = 0; rep < 4; rep++)
+            for (int f = 0; f < 40; f++) {
+                float phase = (float)(2*Math.PI*f/40);
+                float elbow = 130f - 35f*(float)Math.cos(phase);                    // 95 -> 165
+                float wristUp = 0.40f + 0.35f*(0.5f - 0.5f*(float)Math.cos(phase));  // overhead
+                VyayamaCoach.Result r = c.onFrame(pressPose(elbow, wristUp), tNs());
+                key = r.key; reps = r.reps;
+                if (key.equals("SHOULDER_PRESS")) locked = true;
+                if (r.key.equals("SITUP")) everSitup = true;
+            }
+        expectKey  ("press still SHOULDER_PRESS", key, "SHOULDER_PRESS");
+        expectBool ("press NEVER locks SITUP", everSitup, false);
+        expectBool ("press actually locked", locked, true);
+        expectAtLeast("press reps (>=4)", reps, 4);
+    }
+
+    /** 52: a shallower-fold sit-up (hipAngAmp ~30, between 28 and 35) now recognises (was NONE at 35). */
+    static void case52_shallowFoldSitup() {
+        VyayamaCoach c = mk(true);
+        String key = "NONE";
+        for (int rep = 0; rep < 6; rep++)
+            for (int f = 0; f < 40; f++) {
+                float hipFlex = 120f + 17f*(float)Math.cos(2*Math.PI*f/40);   // 103..137 (~30 deg fold)
+                key = c.onFrame(situpPose(hipFlex), tNs()).key;
+            }
+        expectKey("shallow-fold sit-up -> SITUP", key, "SITUP");
+    }
+
+    // ================= VoiceCoach (pure-Java cadence brain) =================
+    static void vcTests() {
+        // 1) warm-up: rep1/rep2 silent, rep3 speaks
+        VoiceCoach v = new VoiceCoach(); v.onExerciseChange("SQUAT", 0L);
+        String l1 = v.onRep("SQUAT", 1, 60, "DEPTH", 0L);
+        String l2 = v.onRep("SQUAT", 2, 60, "DEPTH", 1_000_000_000L);
+        String l3 = v.onRep("SQUAT", 3, 60, "DEPTH", 6_000_000_000L);
+        expectBool("voice: rep1 silent", l1 == null, true);
+        expectBool("voice: rep2 silent", l2 == null, true);
+        expectBool("voice: rep3 speaks", l3 != null && l3.length() > 0, true);
+
+        // 2) dominant issue -> a DEPTH cue
+        expectBool("voice: dominant DEPTH cue", inArr(l3, VC_DEPTH), true);
+
+        // 3) no verbatim repeat across two spoken DEPTH cues
+        VoiceCoach v3 = new VoiceCoach(); v3.onExerciseChange("SQUAT", 0L);
+        v3.onRep("SQUAT", 1, 60, "DEPTH", 0L); v3.onRep("SQUAT", 2, 60, "DEPTH", 100_000_000L);
+        String a = v3.onRep("SQUAT", 3, 60, "DEPTH", 200_000_000L);
+        v3.onRep("SQUAT", 4, 60, "DEPTH", 5_000_000_000L); v3.onRep("SQUAT", 5, 60, "DEPTH", 6_000_000_000L);
+        String b = v3.onRep("SQUAT", 6, 60, "DEPTH", 9_000_000_000L);
+        expectBool("voice: no verbatim repeat", a != null && b != null && !a.equals(b), true);
+
+        // 4) min-time guard: within 4s of speaking -> silent
+        VoiceCoach v4 = new VoiceCoach(); v4.onExerciseChange("SQUAT", 0L);
+        v4.onRep("SQUAT", 1, 60, "DEPTH", 0L); v4.onRep("SQUAT", 2, 60, "DEPTH", 100_000_000L);
+        v4.onRep("SQUAT", 3, 60, "DEPTH", 200_000_000L);   // speaks
+        String s4 = v4.onRep("SQUAT", 4, 60, "DEPTH", 300_000_000L);
+        String s5 = v4.onRep("SQUAT", 5, 60, "DEPTH", 400_000_000L);
+        expectBool("voice: min-time guard", s4 == null && s5 == null, true);
+
+        // 5) praise path: 4 CLEAN reps -> a praise line
+        VoiceCoach v5 = new VoiceCoach(); v5.onExerciseChange("PUSHUP", 0L);
+        v5.onRep("PUSHUP", 1, 100, "CLEAN", 0L); v5.onRep("PUSHUP", 2, 100, "CLEAN", 1_000_000_000L);
+        v5.onRep("PUSHUP", 3, 100, "CLEAN", 2_000_000_000L);
+        String pr = v5.onRep("PUSHUP", 4, 100, "CLEAN", 6_000_000_000L);
+        expectBool("voice: praise on clean streak", inArr(pr, VC_PRAISE), true);
+
+        // 6) milestone: rep 10 announces and contains "10"
+        VoiceCoach v6 = new VoiceCoach(); v6.onExerciseChange("SQUAT", 0L);
+        String m = null;
+        for (int i = 1; i <= 10; i++) m = v6.onRep("SQUAT", i, 90, "CLEAN", i * 5_000_000_000L);
+        expectBool("voice: milestone at 10", m != null && m.contains("10"), true);
+
+        // 7) reset on exercise change -> warm-up restarts
+        VoiceCoach v7 = new VoiceCoach(); v7.onExerciseChange("SQUAT", 0L);
+        v7.onRep("SQUAT", 1, 60, "DEPTH", 0L); v7.onRep("SQUAT", 2, 60, "DEPTH", 1_000_000_000L);
+        v7.onExerciseChange("BICEP_CURL", 10_000_000_000L);
+        String n1 = v7.onRep("BICEP_CURL", 1, 60, "ROM", 11_000_000_000L);
+        String n2 = v7.onRep("BICEP_CURL", 2, 60, "ROM", 12_000_000_000L);
+        expectBool("voice: warm-up restarts on switch", n1 == null && n2 == null, true);
+
+        // 8) implicit exKey-mismatch flush -> silent
+        VoiceCoach v8 = new VoiceCoach(); v8.onExerciseChange("SQUAT", 0L);
+        v8.onRep("SQUAT", 1, 60, "DEPTH", 0L); v8.onRep("SQUAT", 2, 60, "DEPTH", 1_000_000_000L);
+        String mm = v8.onRep("PUSHUP", 1, 60, "SAG", 12_000_000_000L);
+        expectBool("voice: implicit flush on exKey change", mm == null, true);
+
+        // 9) disabled -> silent; re-enabled -> speaks again
+        VoiceCoach v9 = new VoiceCoach(); v9.onExerciseChange("SQUAT", 0L); v9.setEnabled(false);
+        String d1 = v9.onRep("SQUAT", 1, 60, "DEPTH", 0L);
+        String d2 = v9.onRep("SQUAT", 2, 60, "DEPTH", 1_000_000_000L);
+        String d3 = v9.onRep("SQUAT", 3, 60, "DEPTH", 2_000_000_000L);
+        v9.setEnabled(true);
+        String e1 = v9.onRep("SQUAT", 4, 60, "DEPTH", 6_000_000_000L);
+        String e2 = v9.onRep("SQUAT", 5, 60, "DEPTH", 10_000_000_000L);
+        String e3 = v9.onRep("SQUAT", 6, 60, "DEPTH", 14_000_000_000L);
+        expectBool("voice: disabled silent", d1 == null && d2 == null && d3 == null, true);
+        expectBool("voice: re-enabled speaks", e1 != null || e2 != null || e3 != null, true);
+
+        // 10) a single off-rep in a clean window is not corrected (pattern, not per-rep)
+        VoiceCoach v10 = new VoiceCoach(); v10.onExerciseChange("SQUAT", 0L);
+        v10.onRep("SQUAT", 1, 100, "CLEAN", 0L); v10.onRep("SQUAT", 2, 100, "CLEAN", 1_000_000_000L);
+        String s10 = v10.onRep("SQUAT", 3, 70, "DEPTH", 6_000_000_000L);
+        expectBool("voice: single off-rep not a correction", !inArr(s10, VC_DEPTH), true);
+    }
+    static final String[] VC_DEPTH  = { "Go a little deeper.", "A bit lower next time.", "Sink down further." };
+    static final String[] VC_PRAISE = { "Beautiful form — keep going.", "That's it, nice and clean.",
+                                        "Looking strong — stay with it.", "Smooth reps, lovely control." };
+    static boolean inArr(String s, String[] arr) {
+        if (s == null) return false;
+        for (String a : arr) if (a.equals(s)) return true;
+        return false;
     }
 
     /** Squat where the arms also swing (front raise) — knees drive the rep; arms are a distractor. */

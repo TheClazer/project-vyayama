@@ -90,6 +90,7 @@ public class CameraFragment extends Fragment
     public long tic = 0,tic2=0;
     private boolean mNetworkLoaded;
     private FragmentRender mFragmentRender;
+    private android.widget.ImageView mVoiceBtn;
     private final VyayamaCoach mCoach = new VyayamaCoach();
 
     public int fps=0,frame_count =-1;
@@ -448,6 +449,16 @@ public class CameraFragment extends Fragment
         mTextureView.setSurfaceTextureListener(mSurfaceTextureListener);
         mFragmentRender = view.findViewById(R.id.fragmentRender);
 
+        mVoiceBtn = view.findViewById(R.id.voice_toggle);
+        if (mVoiceBtn != null) {
+            mVoiceBtn.setImageResource(VoicePrefs.isEnabled() ? R.drawable.ic_voice_on : R.drawable.ic_voice_off);
+            mVoiceBtn.setOnClickListener(v -> {
+                boolean on = !VoicePrefs.isEnabled();
+                VoicePrefs.setEnabled(on);
+                mVoiceBtn.setImageResource(on ? R.drawable.ic_voice_on : R.drawable.ic_voice_off);
+                if (!on && MainActivity.VOICE_PLAYER != null) MainActivity.VOICE_PLAYER.stopIfSpeaking();
+            });
+        }
     }
 
     @Override
@@ -467,6 +478,8 @@ public class CameraFragment extends Fragment
 
         ensureNetCreated();
 
+        if (mVoiceBtn != null)   // the settings dialog may have toggled voice while we were away
+            mVoiceBtn.setImageResource(VoicePrefs.isEnabled() ? R.drawable.ic_voice_on : R.drawable.ic_voice_off);
     }
 
     @Override
@@ -1019,7 +1032,10 @@ public class CameraFragment extends Fragment
         if (ex.equals("PLANK")) return;   // PLANK reps encode seconds held — not a rep/PB metric
         String prof = ProfileStore.getActive();
         if (prof.isEmpty()) return;
-        if (!ex.equals(mPrevExKey)) { mPrevExKey = ex; mPrevReps = 0; }   // new exercise -> fresh count
+        if (!ex.equals(mPrevExKey)) {                                     // new exercise -> fresh count + voice warm-up
+            mPrevExKey = ex; mPrevReps = 0;
+            MainActivity.VOICE_COACH.onExerciseChange(ex, System.nanoTime());
+        }
         if (r.reps < mPrevReps) mPrevReps = 0;   // engine reps dropped (mode change / re-lock of same key) -> new bout
         if (r.reps > mPrevReps) {
             int delta = r.reps - mPrevReps;
@@ -1030,6 +1046,12 @@ public class CameraFragment extends Fragment
             if (act instanceof MainActivity) act.runOnUiThread(((MainActivity) act)::refreshStatStrip);
             if (ProfileStore.maybeUpdatePB(prof, ex, r.reps)) {
                 mFragmentRender.showNewPB(ProfileStore.pretty(ex), r.reps);
+            }
+            // offline voice coach: feed the completed rep; speak only the cadence-gated line it returns.
+            if (VoicePrefs.isEnabledFast()) {
+                String line = MainActivity.VOICE_COACH.onRep(ex, r.reps, r.formScore, r.issue, System.nanoTime());
+                VoicePlayer vp = MainActivity.VOICE_PLAYER;
+                if (line != null && vp != null && vp.isReady()) vp.speak(line);
             }
         }
     }

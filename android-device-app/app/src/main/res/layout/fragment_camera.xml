@@ -19,4 +19,22 @@
         android:layout_width="400dp"
         android:layout_height="500dp"
         />
+
+    <!-- voice-coach toggle: bottom-left circle. Declared AFTER fragmentRender so it draws on top and,
+         being clickable with its own listener, consumes its own tap (the overlay rotates on the rest). -->
+    <ImageView
+        android:id="@+id/voice_toggle"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentStart="true"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="24dp"
+        android:padding="14dp"
+        android:scaleType="fitCenter"
+        android:clickable="true"
+        android:focusable="true"
+        android:contentDescription="@string/voice_toggle_desc"
+        android:background="@drawable/voice_btn_bg"
+        android:src="@drawable/ic_voice_on" />
 </RelativeLayout>
