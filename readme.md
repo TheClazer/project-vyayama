@@ -9,7 +9,7 @@ Your phone watches your form, counts every rep, scores it, and **talks you throu
 ![Hack4SoC 3.0 — Qualcomm Edge AI](https://img.shields.io/badge/Hack4SoC%203.0-Qualcomm%20Edge%20AI-151a17?style=flat-square)
 ![Snapdragon · Hexagon NPU](https://img.shields.io/badge/Snapdragon-Hexagon%20NPU-C8FF3C?style=flat-square&labelColor=151a17)
 ![100% offline](https://img.shields.io/badge/100%25-offline%20·%20no%20INTERNET%20permission-2C5721?style=flat-square)
-![tests 128/128](https://img.shields.io/badge/tests-128%2F128%20passing-3C9A1E?style=flat-square)
+![tests 123/123](https://img.shields.io/badge/tests-123%2F123%20passing-3C9A1E?style=flat-square)
 ![Android · Java 17](https://img.shields.io/badge/Android-Java%2017-555?style=flat-square)
 
 </div>
@@ -18,7 +18,7 @@ Your phone watches your form, counts every rep, scores it, and **talks you throu
 
 ## TL;DR
 
-Qualcomm's reference app stops at **17 pose keypoints on the NPU.** **Vyāyāma begins there** — turning those keypoints into a full coach that recognises the exercise on its own, counts reps, scores each one 0–100, and **speaks** corrective cues in a soft voice every few reps. All of it runs on the **Snapdragon Hexagon NPU** with **no network, no backend, no cloud** — the app doesn't even request the `INTERNET` permission.
+Qualcomm's reference app stops at **17 pose keypoints on the NPU.** **Vyāyāma begins there** — turning those keypoints into a full coach that recognises the exercise on its own, counts reps, scores each one 0–100, and **speaks** the count and corrective cues every rep, in a soft voice. All of it runs on the **Snapdragon Hexagon NPU** with **no network, no backend, no cloud** — the app doesn't even request the `INTERNET` permission.
 
 ---
 
@@ -29,7 +29,7 @@ Qualcomm's reference app stops at **17 pose keypoints on the NPU.** **Vyāyāma 
 | **Sense** | YOLO-NAS person detector → HRNet 17-keypoint pose, **INT8 on SNPE / Hexagon NPU**; one-tap GPU/CPU fallback. |
 | **Recognise** | Auto-detects **7 exercises** — squat · push-up · bicep curl · jumping jack · shoulder press · sit-up · plank. |
 | **Count & score** | Real-time rep counting + a **0–100 form score** every rep + a live, colour-coded coaching cue. |
-| 🔊 **Voice coach** | Reads the *pattern* across your last 3–4 reps and speaks **one** cue every few reps (*"go a little deeper"*, *"slow it down"*) in a soft on-device voice — built for when you're across the room from the phone. |
+| 🔊 **Voice coach** | Speaks **every rep out loud** — the count *and* a per-rep cue (*"three… go a little deeper… ten, great work!"*) in a soft on-device voice. Built **eyes-off**, for when you're across the room and never looking at the screen. |
 | **Manual mode** | Pin one exercise so it can **never** be misread. |
 | **Offline profiles** | Personal bests, lifetime totals, daily streaks, a PB reward banner, and **daily reminders** (local notifications). |
 | **Coach Vision** | A live overlay of the exact signals the engine is sensing — full transparency. |
@@ -46,8 +46,9 @@ Qualcomm's reference app stops at **17 pose keypoints on the NPU.** **Vyāyāma 
 - **Camera-angle robustness** — a viewpoint-stable **hip-drop** signal counts foreshortened, front-on squats that a knee angle alone misses.
 - **Zero misreads** — *positive-evidence gates*: a sit-up's trunk-fold can never be mistaken for a bicep curl or a shoulder press.
 - **Real-time on a phone** — **zero heap allocation per camera frame** (pre-allocated ring buffers) so the GC never stutters mid-rep; INT8 on the NPU keeps it fast and battery-light.
-- **A voice that isn't annoying** — pattern-over-the-last-4-reps + a 3–4-rep cadence + a 4 s minimum gap + never-repeat-verbatim. It coaches like a human, not a metronome.
-- **Proven, not hand-waved** — the entire brain (`VyayamaCoach` + `VoiceCoach`) is **pure Java** and validated by a **128-assertion offline test harness** that runs in milliseconds, with no device.
+- **Storage treated like CPU memory** — profile stats (PBs, totals, streaks) load into a **write-back RAM buffer** on open and flush to flash **once, on close**; zero per-rep disk writes → less flash wear, lighter battery.
+- **A voice tuned for eyes-off training** — it speaks the rep count *and* a short correction on every rep, rotates the phrasing so it never sounds robotic, and hypes you on every 10th. Counting out loud means you never have to look at the screen.
+- **Proven, not hand-waved** — the entire brain (`VyayamaCoach` + `VoiceCoach`) is **pure Java** and validated by a **123-assertion offline test harness** that runs in milliseconds, with no device.
 
 ---
 
@@ -73,7 +74,7 @@ android-device-app/        ← the shipped app  (Qualcomm QIDK · package com.qc
   app/src/main/java/…/        VyayamaCoach · VoiceCoach · VoicePlayer · VoicePrefs · VoiceSettingsDialog
                               ModePickerDialog · CameraFragment · FragmentRender · ProfileStore · Reminder*
   app/src/main/res/           Volt theme · drawables · layouts
-  tools/coach_harness/        CoachHarness.java  — the 128-assertion pure-Java test suite
+  tools/coach_harness/        CoachHarness.java  — the 123-assertion pure-Java test suite
 android/                   ← device-free Kotlin reference (intelligence layer + unit tests + mocks)
 ml/                        ← optional learned classifier + Python⇄Kotlin feature-parity contract
 docs/                      ← bible.md (design source of truth) + runbooks
@@ -82,7 +83,7 @@ tools/                     ← bible PDF builder · threshold tuner
 
 ---
 
-## 🔬 Tested — 128 / 128, no device needed
+## 🔬 Tested — 123 / 123, no device needed
 
 The rep + voice engine is pure Java, so the full suite runs in seconds:
 
@@ -94,10 +95,10 @@ javac -d out \
   ../../app/src/main/java/com/qc/posedetectionYoloNAS/VoiceCoach.java \
   CoachHarness.java
 java -cp out com.qc.posedetectionYoloNAS.CoachHarness
-# →  PASSED 128 / 128
+# →  PASSED 123 / 123
 ```
 
-Covers: angle math, the rep FSM under jitter / noise / 2× scale / translation / joint dropout, partial & too-fast rejection, all 7 exercises, adaptive ROM, manual mode, the sit-up-vs-shoulder-press fix, and the voice cadence (warm-up silence, dominant-pattern, no-repeat, praise, milestones).
+Covers: angle math, the rep FSM under jitter / noise / 2× scale / translation / joint dropout, partial & too-fast rejection, all 7 exercises, adaptive ROM, manual mode, the sit-up-vs-shoulder-press fix, and the voice coach (speaks every rep, count + per-rep comment, milestones, praise, silent when off).
 
 Device-free Kotlin reference:
 ```bash
